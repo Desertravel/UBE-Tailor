@@ -486,7 +486,8 @@ def repoint(dry=False, items=None):
     res = merged_patch.build(add=add, add_foreign=add_f, log=lines.append)
     placed = merged_patch.place_in_load_order([r[0] for r in res])
     summary = "patch rebuilt: " + ", ".join(f"{f} ({n} mods, {a} armor addons)" for f, n, _o, a, _m in res)
-    if not placed:
+    ms = merged_patch.mo2_status()
+    if not placed and (not ms["mod"] or ms["unticked"]):     # only when MO2 really still needs something ticked
         summary += (" - MO2 is open: close it and press Scan again, or press F5 in MO2, enable the mod '"
                     + os.path.basename(env.OUT_MOD) + "' and tick " + ", ".join(r[0] for r in res)
                     + " at the bottom of the load order")
