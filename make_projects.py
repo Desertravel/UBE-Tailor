@@ -176,13 +176,23 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
             src = resolver.extract(base + first, WORK)
         if not src:
             raise FileNotFoundError(base)
+    ported = False
     try:
         low = lowest_point(src)
     except ValueError as e:
-        if "not Skyrim SE" in str(e):
-            raise OldrimMesh("Skyrim LE (Oldrim) mesh - the mod ships it in the old format; port it to SE first, "
-                             "e.g. with Cathedral Assets Optimizer") from None
-        raise
+        if "not Skyrim SE" not in str(e):
+            raise
+        # a Skyrim LE (Oldrim) mesh: port a copy to SE in the work folder (the mod's own file is never touched)
+        import le_port
+        se = os.path.join(WORK, "le_port", os.path.relpath(src, WORK) if src.startswith(WORK) else
+                          os.path.basename(src))
+        try:
+            le_port.port(src, se)
+            low = lowest_point(se)
+        except Exception as e2:
+            raise OldrimMesh(f"Skyrim LE (Oldrim) mesh that could not be ported to SE ({e2}) - port it with "
+                             "Cathedral Assets Optimizer") from None
+        src, ported = se, True
     if low is not None and low >= NECK_Z:
         raise HeadPiece(f"head piece (lowest point z={low:.0f}, above the neck): no UBE version needed")
     stem = re.sub(r"(?i)\.nif$", "", base)          # a single-weight base is the whole file name
@@ -418,6 +428,7 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
     fit = None if field.body_fit is None else round(float(field.body_fit.mean()), 3)
     log(f"== {set_name}: shapes {len(shapes)} (old body {sorted(bodies)}), UBE parts {[r.key for r in use]}, "
         f"hidden {hidden}, slider data {n_tr}, body fit {fit}, pushed out {pushed}"
+        + (", PORTED from Skyrim LE to SE" if ported else "")
         + (f", FLAT FEET (heel-posed foot part pulled onto the flat foot, heel {flat[2]})" if flat is not None else "") + (f", HEELS (feet fit {heel_fit})" if Vh is not None and heel_fit is not None else ", HEELS (outfit pose)" if Vh is not None else ""))
     return set_name
 

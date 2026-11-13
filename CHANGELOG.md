@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- **Skyrim LE meshes are ported to SE automatically** (le_port.py, with PyNifly: shapes, skin, weights, partitions,
+  shaders, textures, alpha, string extra data such as BODYTRI and the HDT-SMP path) into the work folder, then
+  converted as usual. The mod's own file is never changed. Before, such outfits were listed as "Old LE mesh".
 - **Single-weight meshes** (no _0/_1 pair, about 1000 pieces on the test list) are converted now: their BodySlide
   project builds one file (GenWeights off). Before, they were listed as "Not supported".
 - **Outfits are grouped better:** a mesh folder that holds many outfits (Caenarvon\Cosplay: 400+ pieces) is split
