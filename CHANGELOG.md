@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- The "New outfits" window (Update patch) scrolls now, with Apply / Cancel always visible at the bottom, a
+  search box and Tick shown / Clear. Before, with many mods, Apply was below the screen.
 - First start: the Tailor makes its output mod with an empty `UBE Tailor.esp` at once, so MO2 lists both right away.
 - While MO2 is open the Tailor no longer changes MO2's mod list or load order (MO2 wrote its own lists back as soon
   as BodySlide was started from it, so the output mod was switched off again). Instead a bar says what to tick

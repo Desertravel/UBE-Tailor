@@ -600,16 +600,65 @@ class App:
         win = tk.Toplevel(self.root, bg=BG, padx=16, pady=12)
         win.title("New outfits")
         win.transient(self.root)
+        win.geometry("720x640")
+        win.minsize(520, 360)
         ttk.Label(win, text="New outfits", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(win, style="Sub.TLabel",
-                  text="These mods have outfits with no UBE patch. Tick the ones the tool should patch.").pack(anchor="w", pady=(0, 8))
-        picks = {}
-        for name, (_p, todo) in sorted(found.items()):
+        ttk.Label(win, style="Sub.TLabel", wraplength=680, justify="left",
+                  text="These mods have outfits with no UBE patch. Tick the ones the tool should patch - or none, "
+                       "and press Apply to just update the patch.").pack(anchor="w", pady=(0, 8))
+        # buttons first (packed at the bottom), so they stay visible however long the list is
+        bot = ttk.Frame(win)
+        bot.pack(side="bottom", fill="x", pady=(10, 0))
+        top = ttk.Frame(win)
+        top.pack(fill="x", pady=(0, 6))
+        ttk.Label(top, text="Search", style="Sub.TLabel").pack(side="left")
+        flt = tk.StringVar()
+        ttk.Entry(top, textvariable=flt, width=30).pack(side="left", padx=(6, 10))
+        count = ttk.Label(top, text="", style="Sub.TLabel")
+        count.pack(side="right")
+        # the list: a canvas with a scrollbar (and the mouse wheel)
+        box = tk.Frame(win, bg=BG)
+        box.pack(fill="both", expand=True)
+        canvas = tk.Canvas(box, bg=BG, highlightthickness=0)
+        sb = ttk.Scrollbar(box, orient="vertical", command=canvas.yview)
+        rows = tk.Frame(canvas, bg=BG)
+        rows.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=rows, anchor="nw")
+        canvas.configure(yscrollcommand=sb.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        sb.pack(side="left", fill="y")
+        wheel = lambda ev: canvas.yview_scroll(int(-ev.delta / 120) or (-1 if ev.delta > 0 else 1), "units")
+        canvas.bind("<Enter>", lambda _e: canvas.bind_all("<MouseWheel>", wheel))
+        canvas.bind("<Leave>", lambda _e: canvas.unbind_all("<MouseWheel>"))
+        win.bind("<Destroy>", lambda e: canvas.unbind_all("<MouseWheel>") if e.widget is win else None)
+        picks, boxes = {}, {}
+        for name, (_p, todo) in sorted(found.items(), key=lambda kv: kv[0].lower()):
             v = tk.BooleanVar(value=False)
             picks[name] = v
-            ttk.Checkbutton(win, text=f"{name}   ({len(todo)} outfits)", variable=v).pack(anchor="w", pady=2)
+            boxes[name] = ttk.Checkbutton(rows, text=f"{name}   ({len(todo)} outfits)", variable=v,
+                                          command=lambda: refresh())
+            boxes[name].pack(anchor="w", pady=2)
         if not found:
-            ttk.Label(win, text="No new mods.").pack(anchor="w")
+            ttk.Label(rows, text="No new mods.").pack(anchor="w")
+
+        def shown():
+            t = flt.get().lower()
+            return [n for n in boxes if t in n.lower()]
+
+        def refresh(*_a):
+            vis = set(shown())
+            for n, w in boxes.items():
+                w.pack_forget()
+            for n in sorted(vis, key=str.lower):
+                boxes[n].pack(anchor="w", pady=2)
+            canvas.yview_moveto(0)
+            count["text"] = f"{len(vis)} shown, {sum(v.get() for v in picks.values())} ticked of {len(picks)}"
+        flt.trace_add("write", refresh)
+
+        def tick(on):
+            for n in shown():
+                picks[n].set(on)
+            refresh()
 
         def go():
             chosen = [n for n, v in picks.items() if v.get()]
@@ -631,7 +680,11 @@ class App:
                     self.say("Press Scan to list the new outfits.")
                 self.rescan()
             self.run(work)
-        ttk.Button(win, text="Apply", command=go, style="Accent.TButton").pack(anchor="e", pady=(12, 0))
+        ttk.Button(bot, text="Tick shown", command=lambda: tick(True)).pack(side="left")
+        ttk.Button(bot, text="Clear", command=lambda: tick(False)).pack(side="left", padx=6)
+        ttk.Button(bot, text="Apply", command=go, style="Accent.TButton").pack(side="right")
+        ttk.Button(bot, text="Cancel", command=win.destroy).pack(side="right", padx=6)
+        refresh()
 
 
 # ---------------------------------------------------------------- questions
