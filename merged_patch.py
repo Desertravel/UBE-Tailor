@@ -204,13 +204,104 @@ def remap_sub(t, x, R, fids):
     return x
 
 
+# ---------------------------------------------------------------- winning overrides, smart slots
+def winners(skip=()):
+    """{(sig, owner plugin lower, object id): (plugin, its masters, data, flags)} for every armor and armor addon:
+    the last enabled plugin in the load order that has the record (the winning override - e.g. a balance patch),
+    leaving out the Tailor's own files and `skip` (lower-case names)."""
+    loc = plugin_locations()
+    names = {p.lower(): p for p in enabled_plugins()}
+    ours = {f.lower() for f in merged_files()} | set(skip)
+    out = {}
+    for low in env.load_order():
+        if low not in names or low in ours or low not in loc:
+            continue
+        try:
+            ms, recs = read_plugin(loc[low], {b"ARMO", b"ARMA"})
+        except (OSError, ValueError, struct.error):
+            continue
+        n = len(ms)
+        for sig, fid, d, fl in recs:
+            owner = (ms[fid >> 24] if fid >> 24 < n else names[low]).lower()
+            out[(sig, owner, fid & 0xFFFFFF)] = (names[low], ms, d, fl)
+    return out
+
+
+def used_masters(name, ms, data):
+    """Plugins a record of `name` (masters ms) refers to - they must be masters of the file it is copied into."""
+    used = set()
+
+    def note(fid):
+        if fid:
+            i = fid >> 24
+            used.add(ms[i] if i < len(ms) else name)
+        return fid
+    for t, x in subrecords(data):
+        remap_sub(t, x, note, ARMO_FIDS | ARMA_FIDS)
+    return used
+
+
+def _bod(d):
+    return next((struct.unpack_from("<I", x)[0] for t, x in subrecords(d) if t in (b"BOD2", b"BODT")), 0)
+
+
+def _strip_bod(t, x, mask):
+    if mask and t in (b"BOD2", b"BODT") and len(x) >= 4:
+        return struct.pack("<I", struct.unpack_from("<I", x)[0] & ~mask) + x[4:]
+    return x
+
+
+SMART = {34: 1 << 4, 38: 1 << 8}     # forearms, calves: often claimed by body armor that does not cover them
+COVER_MIN = 15                       # outfit points on those bones that count as "covers it"
+
+
+def smart_slots(e, armo_data, converted):
+    """{"arma": {addon object id: slot bits to remove}, "armo": {armor object id: bits}} for one outfit mod.
+    A body piece (slot 32) whose mesh claims slot 34 / 38 but has none of its own shapes on the forearms / calves
+    (tc.slot_cover, only once it is built as UBE) loses that slot: two worn meshes on one slot make the game hide
+    one of them (boots or gauntlets vanish). The armor itself loses the slot when all its addons that had it did."""
+    out = {"arma": {}, "armo": {}}
+    if not env.S.get("smart_slots", True):
+        return out
+    n = len(e["ms"])
+    armas = {fid & 0xFFFFFF: d for sig, fid, d, _fl in e["recs"] if sig == b"ARMA" and fid >> 24 >= n}
+    cand = {}
+    for _o, arma_objs in e["todo"]:
+        for a in arma_objs:
+            bod = _bod(armas[a])
+            bits = [s for s, bit in SMART.items() if bod & 4 and bod & bit]
+            m3 = next((zstr(x) for t, x in subrecords(armas[a]) if t == b"MOD3"), "").replace("/", "\\")
+            if bits and m3.lower() in converted:     # same key as mod_records uses to switch the mesh
+                cand[a] = (bits, tc.set_name_of(re.sub(r"(?i)_[01]\.nif$", "", m3)))
+    cover = tc.slot_cover(sorted({s for _b, s in cand.values()})) if cand else {}
+    for a, (bits, name) in cand.items():
+        mask = sum(SMART[s] for s in bits if name in cover and cover[name].get(str(s), COVER_MIN) < COVER_MIN)
+        if mask:
+            out["arma"][a] = mask
+    for armo_obj, arma_objs in e["todo"]:
+        bod = _bod(armo_data[armo_obj])
+        mask = 0
+        for s, bit in SMART.items():
+            had = [a for a in arma_objs if _bod(armas[a]) & bit]
+            if bod & 4 and bod & bit and had and all(out["arma"].get(a, 0) & bit for a in had):
+                mask |= bit
+        if mask:
+            out["armo"][armo_obj] = mask
+    return out
+
+
 # ---------------------------------------------------------------- records of one outfit mod
 def mod_records(e, index, new_i, ids, ui, target, extra, converted):
-    """(armo bytes, arma bytes, armo count, arma count) for one source plugin."""
+    """(armo bytes, arma bytes, armo count, arma count) for one source plugin. Armors are copied from their winning
+    override (e["win"]: balance patches stay), smart slots (e["strip"]) are removed from the armor, its UBE copies
+    and its original armor addons (overridden here, the mod itself is never edited)."""
     R = remapper(e["ms"], e["name"], index)
     n = len(e["ms"])
     armas = {fid & 0xFFFFFF: (d, fl) for sig, fid, d, fl in e["recs"] if sig == b"ARMA" and fid >> 24 >= n}
     armos = {fid & 0xFFFFFF: (d, fl) for sig, fid, d, fl in e["recs"] if sig == b"ARMO" and fid >> 24 >= n}
+    win = e.get("win", {})
+    strip = e.get("strip", {}).get("armo", {})          # armor -> slot bits to remove
+    amask = e.get("strip", {}).get("arma", {})          # armor addon -> slot bits to remove
     # UBE's naked body sits on 32 + 53, so body pieces normally get 53 too. But when the outfit has its own slot-53
     # piece (pants, leggings), two pieces worn together would share slot 53 and the game hides one of them.
     own53 = any(next((struct.unpack_from("<I", x)[0] for t, x in subrecords(d) if t in (b"BOD2", b"BODT")), 0) & 1 << 23
@@ -229,6 +320,7 @@ def mod_records(e, index, new_i, ids, ui, target, extra, converted):
                         f0 = struct.unpack_from("<I", x)[0]
                         if f0 & 4 and not own53:        # body slot 32 -> also UBE slot 53
                             x = struct.pack("<I", f0 | 1 << 23) + x[4:]
+                        x = _strip_bod(t, x, amask.get(a, 0))
                     elif t == b"RNAM":
                         x = struct.pack("<I", ui << 24 | target)
                     elif t == b"MODL" and len(x) == 4:
@@ -246,17 +338,33 @@ def mod_records(e, index, new_i, ids, ui, target, extra, converted):
                 arma_body += tc._rec(b"ARMA", done[a], fl, b"".join(subs))
             mine.append(done[a])
         data, fl = armos[armo_obj]
+        Ra = R
+        if armo_obj in win:                             # a later plugin (balance patch...) changed this armor
+            wname, wms, data, fl = win[armo_obj]
+            Ra = remapper(wms, wname, index)
         subs, placed = [], False
         ins = b"".join(tc._sub(b"MODL", struct.pack("<I", f)) for f in mine)
         for t, x in subrecords(data):
             if t == b"MODL" and len(x) == 4 and not placed:
                 subs.append(ins)                        # first in the list so it wins for UBE races
                 placed = True
-            subs.append(tc._sub(t, remap_sub(t, x, R, ARMO_FIDS)))
+            subs.append(tc._sub(t, _strip_bod(t, remap_sub(t, x, Ra, ARMO_FIDS), strip.get(armo_obj, 0))))
         if not placed:
             subs.append(ins)
         armo_body += tc._rec(b"ARMO", R(n << 24 | armo_obj), fl, b"".join(subs))
-    return armo_body, arma_body, len(e["todo"]), len(done)
+    n_over = 0
+    for a, mask in amask.items():                   # the original armor addons lose the same slots (other races)
+        if not mask:
+            continue
+        data, fl = armas[a]
+        Ra = R
+        if a in e.get("awin", {}):
+            wname, wms, data, fl = e["awin"][a]
+            Ra = remapper(wms, wname, index)
+        body = b"".join(tc._sub(t, _strip_bod(t, remap_sub(t, x, Ra, ARMA_FIDS), mask)) for t, x in subrecords(data))
+        arma_body += tc._rec(b"ARMA", R(n << 24 | a), fl, body)
+        n_over += 1
+    return armo_body, arma_body, len(e["todo"]), len(done) + n_over
 
 
 def assign_ids(entries, old):
@@ -368,7 +476,7 @@ def build(add=(), exclude=(), log=print, add_foreign=()):
     target, extra = tc.ube_races()
     converted = repoint_armas.converted_set()
 
-    entries = []
+    entries, W, n_win, n_strip = [], None, 0, 0
     for name in order:
         low = name.lower()
         if low not in enabled or low not in loc:
@@ -386,8 +494,33 @@ def build(add=(), exclude=(), log=print, add_foreign=()):
         names = {m.lower(): m for m in ms}
         names[low] = name
         names[tc.UBE_PLUGIN.lower()] = tc.UBE_PLUGIN
-        e = dict(name=name, path=path, ms=ms, recs=recs, todo=todo, masters=names,
+        if W is None:
+            W = winners(skip)
+        win, awin = {}, {}
+        for armo_obj, arma_objs in todo:
+            w = W.get((b"ARMO", low, armo_obj))
+            if w and w[0].lower() != low:
+                win[armo_obj] = w
+            for a in arma_objs:
+                w = W.get((b"ARMA", low, a))
+                if w and w[0].lower() != low:
+                    awin[a] = w
+        src_armo = {fid & 0xFFFFFF: d for sig, fid, d, _fl in recs if sig == b"ARMO" and fid >> 24 >= len(ms)}
+        e = dict(name=name, path=path, ms=ms, recs=recs, todo=todo, masters=names, win=win, awin=awin,
                  n_arma=len({a for _o, al in todo for a in al}))
+        e["strip"] = smart_slots(e, {o: win[o][2] if o in win else src_armo[o] for o, _al in todo}, converted)
+        stripped = e["strip"]["arma"]
+        for wname, wms, d, _fl in [win[o] for o in win] + [awin[a] for a in awin if a in stripped]:
+            names.update({m.lower(): m for m in used_masters(wname, wms, d)})
+        if win:
+            n_win += len(win)
+        if stripped:
+            n_strip += len(stripped)
+            src_arma = {fid & 0xFFFFFF: d for sig, fid, d, _fl in recs if sig == b"ARMA" and fid >> 24 >= len(ms)}
+            for a, mask in list(stripped.items())[:3]:
+                ed = next((zstr(x) for t, x in subrecords(src_arma[a]) if t == b"EDID"), f"{a:06x}")
+                log(f"   smart slots: {ed} ({name}) - slot(s) "
+                    + ", ".join(str(s) for s, bit in SMART.items() if mask & bit) + " removed: nothing of it there")
         try:                                   # renumber once on a throw-away index to catch odd data early
             mod_records(e, {k: 0 for k in names}, 0, {f"{low}|{a:06x}": FIRST_ID for _o, al in todo for a in al},
                         0, target, extra, converted)
@@ -395,6 +528,10 @@ def build(add=(), exclude=(), log=print, add_foreign=()):
             log(f"   left out {name}: could not copy its records ({ex})")
             continue
         entries.append(e)
+    if n_win:
+        log(f"   {n_win} armor(s) copied from a later plugin that changes them (balance patch etc.) - its changes stay")
+    if n_strip:
+        log(f"   smart slots: {n_strip} armor addon(s) lost forearm / calf slots their mesh does not cover")
     n_over = 0
     for pname in forder:
         if pname.lower() not in enabled:

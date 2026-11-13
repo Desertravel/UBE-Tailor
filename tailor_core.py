@@ -825,6 +825,50 @@ MOTION_NEAR = 3.0        # outfit points this close to the UBE body must move wi
 MOTION_BAD = 0.35        # share of bone weight that differs from the body under it (0 = same, 1 = other bones)
 
 
+def _cover_one(set_name, ref_names):
+    """{"34": n, "38": n}: points of the outfit's own shapes (not the UBE body parts, not zapped / helper shapes)
+    weighted mostly to the forearm / calf bones of the project mesh."""
+    ss = ET.parse(os.path.join(mp.BS, "SliderSets", mp.safe(set_name) + ".osp")).getroot().find("SliderSet")
+    folder, src = ss.findtext("DataFolder"), ss.findtext("SourceFile")
+    nif = NifFile(os.path.join(mp.BS, "ShapeData", folder, src))
+    zapped = {d.get("target") for sl in ss.findall("Slider") if sl.get("zap") == "true" for d in sl.findall("Data")}
+    out = {"34": 0, "38": 0}
+    for s in nif.shapes:
+        if s.name in ref_names or s.name in zapped or not s.bone_names or \
+                re.match(r"(virtual|3ba|3bbb|collision|baseshape)", s.name, re.I):
+            continue
+        for slot, key in (("34", "forearm"), ("38", "calf")):
+            w = np.zeros(len(s.verts))
+            for b, lst in s.bone_weights.items():
+                if key in b.lower():
+                    for vi, wt in lst:
+                        w[vi] += wt
+            out[slot] += int((w >= 0.5).sum())
+    return out
+
+
+def slot_cover(sets):
+    """{set: {"34": n, "38": n}} for converted pieces: how many of their points lie on the forearms / calves
+    (merged_patch.smart_slots). Kept in the database; a new conversion of the piece clears it."""
+    db = load_db()
+    out, todo = {}, []
+    for s in sets:
+        c = db.get(s, {}).get("cover")
+        if c is not None:
+            out[s] = c
+        elif s in db and os.path.isfile(os.path.join(mp.BS, "SliderSets", mp.safe(s) + ".osp")):
+            todo.append(s)
+    if todo:
+        ref_names = {r.shape for r in mp.load_refs()}
+        for s in todo:
+            try:
+                db[s]["cover"] = out[s] = _cover_one(s, ref_names)
+            except Exception:
+                continue
+        save_db(db)
+    return out
+
+
 def motion_check(set_name, refs):
     """How the outfit follows the body when it moves (walking, combat, sitting): every outfit point lying on the
     body is compared with the UBE body's bone weights under it. A point weighted to other bones separates from or

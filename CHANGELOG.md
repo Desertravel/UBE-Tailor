@@ -6,6 +6,13 @@
   as BodySlide was started from it, so the output mod was switched off again). Instead a bar says what to tick
   ("press F5, then tick ...") and goes away by itself once it is done. With MO2 closed it still ticks them itself.
 - Scans again by itself when BodySlide is closed, so the patch switches to the meshes BodySlide just built.
+- `UBE Tailor.esp` now copies each armor from its **winning override** (the last plugin in the load order that
+  changes it: keyword patches, balance patches, Synthesis, string fixes) instead of from the outfit mod itself.
+  Before, those changes were undone for every converted armor (845 of 1610 armors on the test list).
+- **Smart slots:** a body piece whose mesh claims the forearm (34) or calf (38) slot without having anything there
+  loses that slot in the UBE version (and in its original addon, overridden - the mod is never edited). Wearing
+  boots or gauntlets with it no longer makes them vanish. Checked per piece from the converted mesh; settings key
+  `smart_slots` (default on).
 
 ## 0.9.2-beta (2026-11-13)
 - Knows which Skyrim the modpack runs (reads SkyrimSE.exe: SE 1.5.97 or AE 1.6.x, shown bottom right and in the
