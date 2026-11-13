@@ -50,8 +50,14 @@ def kind_of(base, slots, plugin):
     return "clothing"
 
 
+def mesh_files(base):
+    """File name endings of an outfit mesh: '_1.nif' and '_0.nif' (a mesh with two weights), or '' for a
+    single-weight mesh, whose base is the whole path ('armor\\x\\cuirass.nif')."""
+    return ("",) if base.lower().endswith(".nif") else ("_1.nif", "_0.nif")
+
+
 def set_name_of(base):
-    return "UBE Auto - " + base.replace("/", "\\").replace("\\", " - ")
+    return "UBE Auto - " + re.sub(r"(?i)\.nif$", "", base).replace("/", "\\").replace("\\", " - ")
 
 
 def osp_of(base):
@@ -114,7 +120,7 @@ def mesh_exists(base):
     r = _RES.get("r")
     if r is None:
         r = _RES["r"] = Resolver()
-    return any(r.resolve(base + s)[0] for s in ("_1.nif", "_0.nif"))
+    return any(r.resolve(base + s)[0] for s in mesh_files(base))
 
 
 def outdated(items):
@@ -122,13 +128,35 @@ def outdated(items):
     return [i for i in items if i.get("outdated")]
 
 
+BIG_FOLDER = 25      # a mesh folder with more pieces than this holds many outfits (Caenarvon\Cosplay: hundreds)
+
+
+def _outfit_keys(items):
+    """{base lower: outfit key}. Usually one mesh folder is one outfit. A big folder that many outfits share is split
+    by plugin and by the first word of the file name (Sailor_Garter, Sailor_panty -> 'sailor'); a group that is
+    still big is not an outfit at all (key None: such pieces are never pulled in with another one)."""
+    folder = lambda i: os.path.dirname(i["base"]).lower()
+    size = Counter(folder(i) for i in items)
+    keys = {}
+    for i in items:
+        f = folder(i)
+        if size[f] <= BIG_FOLDER:
+            keys[i["base"].lower()] = f
+        else:
+            word = re.match(r"[a-z]+", os.path.basename(i["base"]).lower())
+            keys[i["base"].lower()] = (f, i["plugin"].lower(), word.group(0) if word else "")
+    big = Counter(k for k in keys.values() if isinstance(k, tuple))
+    return {b: (None if isinstance(k, tuple) and big[k] > BIG_FOLDER else k) for b, k in keys.items()}
+
+
 def outfit_mates(chosen, items):
-    """Not-yet-converted pieces of the same outfits (mesh folders) as the chosen ones, so a conversion always
+    """Not-yet-converted pieces of the same outfits as the chosen ones (_outfit_keys), so a conversion always
     covers the whole outfit: a 3BA piece worn over the UBE body sinks in or floats."""
-    folders = {os.path.dirname(i["base"]).lower() for i in chosen}
+    keys = _outfit_keys(items)
+    want = {keys.get(i["base"].lower()) for i in chosen} - {None}
     have = {i["base"].lower() for i in chosen}
     return [i for i in items if i["state"] == "pending" and i["base"].lower() not in have
-            and os.path.dirname(i["base"]).lower() in folders]
+            and keys.get(i["base"].lower()) in want]
 
 
 def to_fix(items):
@@ -137,11 +165,11 @@ def to_fix(items):
 
 
 def left_out(items):
-    """Pieces not converted although another piece of the same outfit (same mesh folder) is: worn together, the
+    """Pieces not converted although another piece of the same outfit (_outfit_keys) is: worn together, the
     3BA one no longer fits the UBE body under it (it sinks in or floats). Returns the items."""
-    folder = lambda i: os.path.dirname(i["base"]).lower()
-    started = {folder(i) for i in items if i["state"] in ("built", "done")}
-    return [i for i in items if i["state"] == "pending" and folder(i) in started]
+    keys = _outfit_keys(items)
+    started = {keys.get(i["base"].lower()) for i in items if i["state"] in ("built", "done")} - {None}
+    return [i for i in items if i["state"] == "pending" and keys.get(i["base"].lower()) in started]
 
 
 def slot53_models(path):
@@ -302,7 +330,7 @@ def scan():
     for it in items.values():
         it["format"] = format_of(it["plugin"], it["file"])
         it["set"] = set_name_of(it["base"])
-        proj = it["weighted"] and os.path.exists(osp_of(it["base"]))
+        proj = os.path.exists(osp_of(it["base"]))
         if proj:
             it["state"] = "done" if it["ube_all"] else "built"
         elif it["ube_any"]:
@@ -314,7 +342,7 @@ def scan():
         elif db.get(it["set"], {}).get("missing") and not mesh_exists(it["base"]):
             it["state"] = "missing"      # the mod points at a mesh it never shipped (checked again each scan)
         else:
-            it["state"] = "pending" if it["weighted"] else "nosupport"
+            it["state"] = "pending"      # single-weight meshes too (one output file, GenWeights off)
         it["outdated"] = it["state"] in ("built", "done") and db.get(it["set"], {}).get("method", 0) < mp.METHOD
         it["slots"] = sorted(it["slots"])
         it["kind"] = kind_of(it["base"], it["slots"], it["plugin"])
@@ -569,7 +597,7 @@ def source_sig(resolver, base):
     """(kind, path, meshes-relative name, signature) of the mesh the game uses for an outfit: _1.nif, or _0.nif
     when the mod ships only that one. signature = [file, modified time, size] (the BSA's for a packed mesh), so a
     mod update shows as a changed signature. kind None when the game has neither."""
-    for w in ("_1.nif", "_0.nif"):
+    for w in mesh_files(base):
         rel = base + w
         kind, src = resolver.resolve(rel)
         if kind:
@@ -658,9 +686,9 @@ def convert(bases, workers=6, on=None, stop=None):
     for _plugin, data in _patch_armas():
         _e, m3, slots, _r, _a = arma_info(data)
         if m3:
-            mo = re.match(r"(?:!ube\\)?(.*)_[01]\.nif$", m3.replace("/", "\\"), re.I)
-            if mo:
-                slot_map.setdefault(mo.group(1).lower(), set()).update(slots)
+            p = re.sub(r"(?i)^!ube\\", "", m3.replace("/", "\\"))
+            mo = re.match(r"(.*)_[01]\.nif$", p, re.I)
+            slot_map.setdefault((mo.group(1) if mo else p).lower(), set()).update(slots)
     made, failed, i = [], [], 0
     jobs = []
     for b in bases:

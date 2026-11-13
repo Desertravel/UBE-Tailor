@@ -1,6 +1,13 @@
 # Changelog
 
 ## Unreleased
+- **Single-weight meshes** (no _0/_1 pair, about 1000 pieces on the test list) are converted now: their BodySlide
+  project builds one file (GenWeights off). Before, they were listed as "Not supported".
+- **Outfits are grouped better:** a mesh folder that holds many outfits (Caenarvon\Cosplay: 400+ pieces) is split
+  by plugin and by the first word of the file name, so converting the Sailor outfit converts its 18 pieces, not
+  the whole folder. Groups that are still huge are never pulled in with another piece.
+- **BodySlide button:** opens BodySlide through MO2 (so it sees your mods); when you close it, the Tailor scans.
+- Health check: clearer text for meshes the mod points at but never shipped.
 - The "New outfits" window (Update patch) scrolls now, with Apply / Cancel always visible at the bottom, a
   search box and Tick shown / Clear. Before, with many mods, Apply was below the screen.
 - First start: the Tailor makes its output mod with an empty `UBE Tailor.esp` at once, so MO2 lists both right away.

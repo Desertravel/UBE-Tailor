@@ -77,6 +77,9 @@ def apply_theme(root):
         pass
 
 
+GROUP_NAME = "UBE Auto Conversions"   # make_projects.GROUP (not imported here: it needs PyNifly)
+
+
 class App:
     def __init__(self, root):
         self.root = root
@@ -126,8 +129,9 @@ class App:
         self.btn_qa = ttk.Button(top, text="Check fit", command=self.do_qa)
         self.btn_patch = ttk.Button(top, text="Update patch", command=self.do_patch)
         self.btn_doc = ttk.Button(top, text="Health check", command=self.do_doctor)
+        self.btn_bs = ttk.Button(top, text="BodySlide", command=self.do_bodyslide)
         self.btn_stop = ttk.Button(top, text="Stop", command=self.do_stop, state="disabled", style="Danger.TButton")
-        for b in (self.btn_scan, self.btn_conv, self.btn_qa, self.btn_patch, self.btn_doc, self.btn_stop):
+        for b in (self.btn_scan, self.btn_conv, self.btn_bs, self.btn_qa, self.btn_patch, self.btn_doc, self.btn_stop):
             b.pack(side="left", padx=(0, 6))
         self.redo = tk.BooleanVar(value=False)
         ttk.Checkbutton(top, text="Re-convert done ones", variable=self.redo).pack(side="right")
@@ -206,6 +210,19 @@ class App:
         root.after(120, self.prepare_output)
         root.after(150, self.check_game)
         root.after(200, self.do_scan)
+
+    def do_bodyslide(self):
+        """Open BodySlide (through MO2, so it sees the mods); when it is closed the Tailor scans again (watch)."""
+        if tc.running("SkyrimSE.exe"):
+            messagebox.showwarning("UBE Tailor", "The game is running. Close it first.")
+            return
+        ok, msg = env.launch_bodyslide()
+        self.say(msg)
+        if ok:
+            self.say(f"Next: in BodySlide pick the group '{GROUP_NAME}', your preset, tick Build Morphs, press Batch "
+                     "Build. Close BodySlide when it is done - the Tailor then scans by itself.")
+        else:
+            messagebox.showinfo("UBE Tailor", msg)
 
     # ------------------------------------------------------------ MO2: output mod + plugin, BodySlide closing
     def prepare_output(self):
@@ -316,7 +333,7 @@ class App:
     def set_busy(self, b):
         self.busy = b
         self.stop_flag = False
-        for w in (self.btn_scan, self.btn_conv, self.btn_qa, self.btn_patch, self.btn_doc):
+        for w in (self.btn_scan, self.btn_conv, self.btn_bs, self.btn_qa, self.btn_patch, self.btn_doc):
             w["state"] = "disabled" if b else "normal"
         self.btn_stop["state"] = "normal" if b else "disabled"
         if not b:

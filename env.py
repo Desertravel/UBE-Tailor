@@ -385,6 +385,44 @@ def bodyslide_exe():
     return None
 
 
+def mo2_executable(binary_names):
+    """Title of the MO2 executable (ModOrganizer.ini [customExecutables]) whose binary is one of binary_names."""
+    want = {b.lower() for b in binary_names}
+    try:
+        cp = configparser.RawConfigParser(strict=False, interpolation=None)
+        cp.optionxform = str
+        with open(L["ini"], encoding="utf-8", errors="replace") as f:
+            cp.read_file(f)
+        sec = dict(cp.items("customExecutables")) if cp.has_section("customExecutables") else {}
+    except (OSError, configparser.Error, TypeError, KeyError):
+        return None
+    for k, v in sec.items():
+        if k.endswith("\\binary") and os.path.basename(_unwrap(v).replace("/", "\\")).lower() in want:
+            return _unwrap(sec.get(k[:-len("binary")] + "title", "")) or None
+    return None
+
+
+def launch_bodyslide():
+    """Start BodySlide so that it sees the modpack. MO2 started us: start it directly (it then runs in MO2's
+    virtual file system as well). Otherwise ask MO2 to start its own BodySlide entry (moshortcut). Returns
+    (started, message)."""
+    import subprocess
+    exe = bodyslide_exe()
+    if not exe:
+        return False, "BodySlide was not found in the modpack."
+    if inside_mo2():
+        subprocess.Popen([exe], cwd=os.path.dirname(exe))
+        return True, "BodySlide started."
+    title = mo2_executable(["BodySlide x64.exe", "BodySlide.exe"])
+    mo = next((os.path.join(d, "ModOrganizer.exe") for d in _running_mo2_dirs() + [L["instance"]]
+               if os.path.isfile(os.path.join(d, "ModOrganizer.exe"))), None)
+    if not (title and mo):
+        return False, ("Start BodySlide from MO2 (add it to MO2's executables if it is not there: Binary = "
+                       + exe + "). Started on its own it would not see your mods.")
+    subprocess.Popen([mo, f"moshortcut://:{title}"], cwd=os.path.dirname(mo))
+    return True, f"BodySlide started through MO2 ('{title}')."
+
+
 def plugin_path(name):
     """Winning file of a plugin (mods by priority, overwrite, game Data), or None."""
     return find(name)

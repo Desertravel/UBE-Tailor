@@ -170,9 +170,10 @@ def push_out(P, V, F, FN, gap=MIN_GAP, band=CLIP_BAND, k=8):
 def make_project(base, src, ref, refs, resolver, log=print, slots=None):
     base = base.replace("/", "\\")
     if src is None:
-        src = os.path.join(WORK, "meshes", base + "_1.nif")
+        first = "" if base.lower().endswith(".nif") else "_1.nif"        # single-weight mesh: the base is the file
+        src = os.path.join(WORK, "meshes", base + first)
         if not os.path.isfile(src):
-            src = resolver.extract(base + "_1.nif", WORK)
+            src = resolver.extract(base + first, WORK)
         if not src:
             raise FileNotFoundError(base)
     try:
@@ -184,9 +185,10 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
         raise
     if low is not None and low >= NECK_Z:
         raise HeadPiece(f"head piece (lowest point z={low:.0f}, above the neck): no UBE version needed")
-    set_name = "UBE Auto - " + base.replace("\\", " - ")
+    stem = re.sub(r"(?i)\.nif$", "", base)          # a single-weight base is the whole file name
+    set_name = "UBE Auto - " + stem.replace("\\", " - ")  # = tailor_core.set_name_of(base)
     folder = safe(set_name)
-    fname = safe(os.path.basename(base))
+    fname = safe(os.path.basename(stem))
     shape_dir = os.path.join(BS, "ShapeData", folder)
     os.makedirs(shape_dir, exist_ok=True)
     nif_path = os.path.join(shape_dir, fname + ".nif")
@@ -377,12 +379,16 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
     write_osd(os.path.join(shape_dir, osd_name), entries)
 
     out_dir, out_file = os.path.split(base)
+    single = out_file.lower().endswith(".nif")          # single-weight mesh: BodySlide builds one file, no _0/_1
+    if single:
+        out_file = out_file[:-4]
     L = ['<?xml version="1.0" encoding="UTF-8"?>', '<SliderSetInfo version="1">',
          f'    <SliderSet name={quoteattr(set_name)}>',
          f'        <DataFolder>{escape(folder)}</DataFolder>',
          f'        <SourceFile>{escape(fname)}.nif</SourceFile>',
          f'        <OutputPath>{escape(chr(92).join(["meshes", "!UBE", out_dir]))}</OutputPath>',
-         f'        <OutputFile GenWeights="true" PreventMorphFile="false" KeepZappedShapes="false">{escape(out_file)}</OutputFile>']
+         f'        <OutputFile GenWeights="{"false" if single else "true"}" PreventMorphFile="false" '
+         f'KeepZappedShapes="false">{escape(out_file)}</OutputFile>']
     for r in use:
         L.append(f'        <Shape target={quoteattr(r.shape)} DataFolder={quoteattr(r.folder)} SmoothSeamNormalsAngle="120">{escape(r.shape)}</Shape>')
     for s in shapes:

@@ -106,7 +106,7 @@ def check(deep=False, log=None):
                 now = {(s, b) for s, b in mp.smp_falling(os.path.join(folder, f), res) if s not in ref_shapes}
                 if not now:
                     continue
-                src = next((p for p in (os.path.join(mp.WORK, "meshes", i["base"] + w) for w in ("_1.nif", "_0.nif"))
+                src = next((p for p in (os.path.join(mp.WORK, "meshes", i["base"] + w) for w in tc.mesh_files(i["base"]))
                             if os.path.isfile(p)), proj_src.get(i["base"].lower()))
                 if src and now <= mp.smp_falling(src, res):
                     theirs.append(i["base"])         # the same bones fall in the mod's own mesh: its design
@@ -152,7 +152,7 @@ def check(deep=False, log=None):
     built = built_meshes()
     unbuilt, stale = [], []
     for i in conv:
-        rel = (i["base"] + "_1.nif").lower()
+        rel = (i["base"] + tc.mesh_files(i["base"])[0]).lower()
         osp = tc.osp_of(i["base"])
         if rel not in built:
             unbuilt.append(i["base"])
@@ -207,11 +207,11 @@ def check(deep=False, log=None):
     if bad_fit or bad_move:
         out.append(Finding("review", "info", f"to look at in game: {len(bad_fit)} piece(s) with fit C, "
                            f"{len(bad_move)} with moving C (the Fit column shows them)", bad_fit + bad_move))
-    counts = {k: sum(1 for i in items if i["state"] == k) for k in ("oldrim", "missing", "nosupport")}
+    counts = {k: sum(1 for i in items if i["state"] == k) for k in ("oldrim", "missing")}
     if any(counts.values()):
         out.append(Finding("cannot", "info", f"cannot be converted: {counts['oldrim']} old Skyrim LE mesh(es) "
-                           f"(port them to SE first), {counts['missing']} mesh(es) the mod never shipped (invisible "
-                           f"in game anyway), {counts['nosupport']} single-weight mesh(es) (not supported yet)"))
+                           f"(port them to SE first), {counts['missing']} mesh(es) the mod points at but never "
+                           "shipped - not loose, not in any loaded BSA (invisible in game anyway)"))
     say(f"health check done in {time.time() - t0:.0f} s")
     return out
 
