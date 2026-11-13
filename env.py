@@ -278,11 +278,12 @@ def inside_mo2():
 
 def can_edit_profile():
     """MO2 keeps the profile files in memory and writes them back, so they may only be changed while MO2 is
-    closed, or while MO2 itself is running us (it re-reads them when we exit).
+    closed. Not even when MO2 started us: it writes its own lists again as soon as the user starts another program
+    from it (BodySlide), and our change is lost. While MO2 is open the Tailor asks the user to tick instead.
     UBE_TAILOR_READONLY_PROFILE=1 (tests) never allows it."""
     if os.environ.get("UBE_TAILOR_READONLY_PROFILE"):
         return False
-    return inside_mo2() or not mo2_running()
+    return not mo2_running()
 
 
 def enable_output_mod():

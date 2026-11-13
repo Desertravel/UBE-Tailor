@@ -46,6 +46,31 @@ def merged_files():
     return sorted(f for f in os.listdir(mp.MOD) if FILE_RX.match(f))
 
 
+def ensure_plugin():
+    """Make the output mod and an empty UBE Tailor.esp when there is none yet, so MO2 lists both from the first
+    start: the user ticks them once (F5 in MO2), the Tailor fills the plugin when outfits are converted.
+    True if it made them now."""
+    if merged_files():
+        return False
+    os.makedirs(mp.MOD, exist_ok=True)
+    tes4 = tc._sub(b"HEDR", struct.pack("<fiI", HEDR_VERSION, 0, FIRST_ID))
+    tes4 += tc._sub(b"CNAM", b"UBE Tailor\0")
+    tes4 += tc._sub(b"SNAM", b"UBE versions of outfits, made by UBE Tailor (by Desertravel). Empty until outfits "
+                             b"are converted; the tool rebuilds this file.\0")
+    with open(os.path.join(mp.MOD, "UBE Tailor.esp"), "wb") as f:
+        f.write(struct.pack("<4sIIIIHH", b"TES4", len(tes4), 0x200, 0, 0, 44, 0) + tes4)
+    return True
+
+
+def mo2_status():
+    """What MO2 must have for the game and BodySlide to see the Tailor's work: {mod: output mod enabled,
+    unticked: merged files not ticked, files: merged files, mo2: MO2 is running}."""
+    files = merged_files()
+    on = {p.lower() for p in enabled_plugins()}
+    return {"mod": env.output_mod_enabled(), "unticked": [f for f in files if f.lower() not in on], "files": files,
+            "mo2": env.mo2_running()}
+
+
 def load_state():
     try:
         with open(STATE, encoding="utf-8") as f:
@@ -462,7 +487,7 @@ def build(add=(), exclude=(), log=print, add_foreign=()):
 
 def place_in_load_order(files, drop=()):
     """Enable the output mod, tick the merged files and put them at the end of the load order (after all their
-    masters); remove the drop plugins. Only when MO2 is closed or launched us (env.can_edit_profile). True if
+    masters); remove the drop plugins. Only when MO2 is closed (env.can_edit_profile). True if
     written (or nothing had to change). Every profile file is backed up first (env.backup)."""
     if not env.can_edit_profile():
         return False

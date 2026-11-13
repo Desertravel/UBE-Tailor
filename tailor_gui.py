@@ -163,6 +163,10 @@ class App:
 
         mid = ttk.Frame(root, padding=(14, 6))
         mid.pack(fill="both", expand=True)
+        self._mid = mid
+        # shown only while MO2 still needs the output mod / plugin ticked (watch -> show_mo2)
+        self.mo2_bar = tk.Label(root, text="", bg="#3a3216", fg=GOLD, font=FONT_B, anchor="w", justify="left",
+                                padx=14, pady=8, wraplength=1100)
         cols = ("check", "state", "grade", "slots")
         self.tree = ttk.Treeview(mid, columns=cols, selectmode="none")
         self.tree.heading("#0", text="Mod / piece", anchor="w")
@@ -199,8 +203,57 @@ class App:
         self.log.pack(fill="both", padx=14, pady=(4, 14))
 
         root.after(100, self.poll)
+        root.after(120, self.prepare_output)
         root.after(150, self.check_game)
         root.after(200, self.do_scan)
+
+    # ------------------------------------------------------------ MO2: output mod + plugin, BodySlide closing
+    def prepare_output(self):
+        """First start: make the output mod with an empty UBE Tailor.esp, so MO2 lists both at once; then keep
+        watching MO2 and BodySlide."""
+        import merged_patch
+        if merged_patch.ensure_plugin():
+            self.say(f"Made the mod '{os.path.basename(env.OUT_MOD)}' with an empty UBE Tailor.esp - the Tailor fills "
+                     "it when you convert outfits.")
+        threading.Thread(target=self.watch, daemon=True).start()
+
+    def watch(self):
+        """Every 3 s: does MO2 have the output mod and plugin ticked, and has BodySlide just been closed (then the
+        Tailor scans again, so the patch uses what BodySlide built)."""
+        import merged_patch
+        was = False
+        while True:
+            try:
+                bs = tc.running("BodySlide x64.exe") or tc.running("BodySlide.exe")
+                self.q.put(("mo2", merged_patch.mo2_status()))
+                if was and not bs:
+                    self.q.put(("autoscan", None))
+                was = bs
+            except Exception:
+                pass
+            time.sleep(3)
+
+    def show_mo2(self, st):
+        """MO2 closed: enable the mod / tick the plugin ourselves. MO2 open: it would overwrite that, so show a bar
+        that says what to tick, and wait until the user did it."""
+        import merged_patch
+        name = os.path.basename(env.OUT_MOD)
+        need = ([f"the mod '{name}' (left side)"] if not st["mod"] else []) + \
+               ([f"the plugin {', '.join(st['unticked'])} (right side, at the bottom)"] if st["unticked"] else [])
+        if need and not st["mo2"] and not self.busy and env.can_edit_profile():
+            if merged_patch.place_in_load_order(st["files"]):
+                self.say(f"Enabled the mod '{name}' in MO2 and ticked {', '.join(st['files'])} at the end of the "
+                         "load order.")
+                need = []
+        if need:
+            self.mo2_bar["text"] = ("⚠  In MO2: press F5, then tick " if st["mo2"] else "⚠  Start MO2 and tick ") + \
+                " and ".join(need) + ". BodySlide and the game only see the Tailor's work then. The Tailor waits - " \
+                "this bar goes away as soon as they are ticked."
+            if not self.mo2_bar.winfo_ismapped():
+                self.mo2_bar.pack(fill="x", padx=14, pady=(2, 4), before=self._mid)
+        elif self.mo2_bar.winfo_ismapped():
+            self.mo2_bar.pack_forget()
+            self.say(f"MO2: the mod '{name}' and {', '.join(st['files'])} are ticked - ready.")
 
     # ------------------------------------------------------------ the game: SE or AE
     def check_game(self):
@@ -248,6 +301,12 @@ class App:
                     self.root.after(300, lambda v=val: self.offer_fix(*v))   # after the busy state clears
                 elif kind == "doctor":
                     self.root.after(300, lambda v=val: self.show_doctor(v))
+                elif kind == "mo2":
+                    self.show_mo2(val)
+                elif kind == "autoscan":
+                    if not self.busy:
+                        self.say("BodySlide was closed - scanning again to use what it built...")
+                        self.do_scan()
                 elif kind == "done":
                     self.set_busy(False)
         except queue.Empty:

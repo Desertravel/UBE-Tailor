@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+- First start: the Tailor makes its output mod with an empty `UBE Tailor.esp` at once, so MO2 lists both right away.
+- While MO2 is open the Tailor no longer changes MO2's mod list or load order (MO2 wrote its own lists back as soon
+  as BodySlide was started from it, so the output mod was switched off again). Instead a bar says what to tick
+  ("press F5, then tick ...") and goes away by itself once it is done. With MO2 closed it still ticks them itself.
+- Scans again by itself when BodySlide is closed, so the patch switches to the meshes BodySlide just built.
+
 ## 0.9.2-beta (2026-11-13)
 - Knows which Skyrim the modpack runs (reads SkyrimSE.exe: SE 1.5.97 or AE 1.6.x, shown bottom right and in the
   requirements screen) and asks when it cannot tell. On SE / older AE it warns when plugins of the modpack use the
