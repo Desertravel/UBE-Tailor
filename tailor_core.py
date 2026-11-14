@@ -674,10 +674,31 @@ def _results(pool, fn, jobs, stop):
         yield res
 
 
-def _pool(workers, init):
+def _pool(workers, init, maxtasks=None):
     for v in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
         os.environ[v] = "2"               # workers run side by side; keep each one's math library small
-    return multiprocessing.get_context("spawn").Pool(workers, initializer=init)
+    return multiprocessing.get_context("spawn").Pool(workers, initializer=init, maxtasksperchild=maxtasks)
+
+
+def _crashed(err):
+    """An error from inside the mesh library (PyNifly's DLL), not from the mesh: the same piece usually converts
+    fine in a fresh process."""
+    return bool(err) and (err.startswith("OSError(") or "access violation" in err.lower())
+
+
+def _keep(db, base, name, err, lines, made, failed):
+    """Record one conversion result in the database and the made / failed lists."""
+    if err and err.startswith("HEAD: "):
+        db[set_name_of(base)] = {"base": base, "head": True}     # listed as a head piece from now on
+    elif err and err.startswith("OLDRIM: "):
+        db[set_name_of(base)] = {"base": base, "oldrim": True}   # listed as "old format" from now on
+    elif err:
+        failed.append((base, err))
+    else:
+        made.append(name)
+        line = next((l for l in lines if l.startswith("== ")), "")
+        db[name] = {"base": base, "heel": "HEELS" in line, "log": line, "method": mp.METHOD,
+                    "src": SOURCE_SIGS.get(base)}      # to notice when the mod updates the mesh
 
 
 def convert(bases, workers=6, on=None, stop=None, prep=None):
@@ -710,25 +731,30 @@ def convert(bases, workers=6, on=None, stop=None, prep=None):
                 on(i, total, b, None, msg, [])
     if jobs:
         ube_field.load_cache()            # build the reference cache once here, not in every worker at the same time
+        retry = []
         with _pool(max(1, min(workers, len(jobs))), _init) as pool:
             for base, name, lines, err in _results(pool, _convert_one, jobs, stop):
                 i += 1
-                if err and err.startswith("HEAD: "):
-                    db[set_name_of(base)] = {"base": base, "head": True}     # listed as a head piece from now on
-                elif err and err.startswith("OLDRIM: "):
-                    db[set_name_of(base)] = {"base": base, "oldrim": True}   # listed as "old format" from now on
-                elif err:
-                    failed.append((base, err))
+                if _crashed(err):
+                    retry.append((base, err))       # tried again at the end, in a fresh process
+                    err = "RETRY: " + err
                 else:
-                    made.append(name)
-                    line = next((l for l in lines if l.startswith("== ")), "")
-                    db[name] = {"base": base, "heel": "HEELS" in line, "log": line, "method": mp.METHOD,
-                                "src": SOURCE_SIGS.get(base)}      # to notice when the mod updates the mesh
+                    _keep(db, base, name, err, lines, made, failed)
                 if on:
                     on(i, total, base, name, err, lines)
                 if i % 25 == 0:
                     mp.write_group(made)
                     save_db(db)
+        if retry and not (stop and stop()):
+            again = [(b, srcs[b], slot_map.get(b.lower())) for b, _e in retry]
+            # one process per piece (maxtasks=1): whatever the library had left over is gone
+            with _pool(max(1, min(workers, len(again))), _init, maxtasks=1) as pool:
+                for base, name, lines, err in _results(pool, _convert_one, again, stop):
+                    _keep(db, base, name, err, lines, made, failed)
+                    if on:
+                        on(total, total, base, name, err, lines)
+        elif retry:
+            failed.extend(retry)
     mp.write_group(made)
     save_db(db)
     return made, failed

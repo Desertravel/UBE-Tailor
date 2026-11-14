@@ -573,8 +573,15 @@ class App:
                 self.say(f"Also converting {len(mates)} more piece(s) of the same outfits, so each outfit is complete.")
             self.say(f"Converting {len(sel)} pieces...")
 
+            retried = set()
+
             def on(i, total, base, name, err, lines):
-                if err and err.startswith(("HEAD: ", "OLDRIM: ", "MISSING: ")):
+                if err and err.startswith("RETRY: "):
+                    retried.add(base)
+                    self.say(f"   {base}: the mesh library crashed ({err[7:]}) - tried again at the end, in a fresh process")
+                elif base in retried and name and not err:
+                    self.say(f"   {base}: OK on the second try")
+                elif err and err.startswith(("HEAD: ", "OLDRIM: ", "MISSING: ")):
                     self.say(f"   skipped: {base}  ({err.split(': ', 1)[1]})")
                 elif err:
                     self.say(f"   failed: {base}  {err}")
