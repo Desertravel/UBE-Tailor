@@ -271,7 +271,9 @@ def fix(set_name, presets, refs, heel=False, surfaces=None, log=None, write=True
         surfaces[zkey] = surface(refs, pvs.get("-Zeroed Sliders-") or tc.preset_values("-Zeroed Sliders-"), 1, heel)
     S0 = surfaces[zkey]
     allV = np.array([vals for _S, vals in cases])
-    before, after = {}, {}
+    zero = {"verts": 0, "in0": 0, "in1": 0, "worst": 0.0}
+    before = {p: dict(zero) for p in presets}            # a piece with no visible outfit shape stays at zero
+    after = {p: dict(zero) for p in presets}
     report = {"changed": 0, "shapes": 0, "kept": 0}
     plan = []                                            # (shape, rest, cols, St, V, near, u, sd, nn)
     for shape, rest in pr.rest.items():

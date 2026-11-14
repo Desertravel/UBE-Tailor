@@ -14,6 +14,8 @@
   (6 at a time), up to a minute for big bras and dresses. Also on the command line: `python fix_clip.py`.
 - Preset, Workers and "Re-convert done ones" moved up next to Modpack / Requirements / Guide: in a narrow window
   they were pushed out of sight behind the buttons, so the preset could not be picked.
+- Fix clipping: a piece with no visible outfit shape (only hidden or untextured ones) is listed as already fine
+  instead of failing with KeyError.
 - A piece whose conversion crashes inside the mesh library (PyNifly: "OSError ... access violation", seen once in
   3,800 pieces; the same piece converts fine on its own) is tried again at the end in a fresh process, instead of
   being listed as failed.
