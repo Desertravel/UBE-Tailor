@@ -12,6 +12,10 @@
   Test (62 pieces of a real list, 27 presets, fit check before/after): points inside 70,350 -> 15,007, no piece
   worse at any preset; worst grade per piece of 50 random pieces A 20 / B 13 / C 17 -> A 37 / B 7 / C 6; about 8 s per piece
   (6 at a time), up to a minute for big bras and dresses. Also on the command line: `python fix_clip.py`.
+- Preset, Workers and "Re-convert done ones" moved up next to Modpack / Requirements / Guide: in a narrow window
+  they were pushed out of sight behind the buttons, so the preset could not be picked.
+- Converting shows progress while it first copies the outfit meshes (minutes for thousands of pieces after a fresh
+  start - before, the bar stood still), and Stop works during that step too.
 - The fit check (and conversion) no longer depends on search order when an outfit point is equally close to two
   body triangles (at seams): the same triangle is always used, so in/out is always read the same way.
 - **Skyrim LE meshes are ported to SE automatically** (le_port.py, with PyNifly: shapes, skin, weights, partitions,

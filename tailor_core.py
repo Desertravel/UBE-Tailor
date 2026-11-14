@@ -606,7 +606,7 @@ def source_sig(resolver, base):
     return None, None, None, None
 
 
-def prepare_sources(bases, log=None):
+def prepare_sources(bases, log=None, prog=None, stop=None):
     """{base: source nif or None}. Each outfit's winning mesh is copied into work\\src, and copied again when the
     mod changed it (the copy is checked against the source's signature). Packed meshes are read straight out of
     their BSA. Outfits that were never built use their 3BA BodySlide project's source nif."""
@@ -618,7 +618,11 @@ def prepare_sources(bases, log=None):
     except (OSError, ValueError):
         sigs = {}
     srcs = {}
-    for base in bases:
+    for k, base in enumerate(bases):
+        if prog and k % 10 == 0:
+            prog(k, len(bases))
+        if stop and stop():
+            return None                    # stopped: nothing is converted
         kind, src, rel, sig = source_sig(resolver, base)
         srcs[base] = None
         if not kind:
@@ -676,11 +680,14 @@ def _pool(workers, init):
     return multiprocessing.get_context("spawn").Pool(workers, initializer=init)
 
 
-def convert(bases, workers=6, on=None, stop=None):
-    """Make UBE projects for the mesh bases. on(i, total, base, set name or None, error or None, log lines)."""
+def convert(bases, workers=6, on=None, stop=None, prep=None):
+    """Make UBE projects for the mesh bases. on(i, total, base, set name or None, error or None, log lines);
+    prep(i, total) while the source meshes are copied first."""
     db = load_db()
     total = len(bases)
-    srcs = prepare_sources(bases, log=(lambda s: on(0, total, s, None, None, [])) if on else None)
+    srcs = prepare_sources(bases, log=(lambda s: on(0, total, s, None, None, [])) if on else None, prog=prep, stop=stop)
+    if srcs is None:
+        return [], []
     # biped slots per piece (from the patches): a stocking that does not take the feet slot gets flat feet
     slot_map = {}
     for _plugin, data in _patch_armas():

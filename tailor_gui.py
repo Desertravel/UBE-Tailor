@@ -110,6 +110,18 @@ class App:
         ttk.Button(links, text="Modpack...", command=lambda: SetupWindow(root)).pack(side="left", padx=(0, 6))
         ttk.Button(links, text="Requirements", command=lambda: RequirementsWindow(root, None, first=True)).pack(side="left")
         ttk.Button(links, text="Guide", command=lambda: WelcomeWindow(root)).pack(side="left", padx=(6, 0))
+        # preset, workers, re-convert: up here, so a narrow window never hides them behind the buttons
+        opts = ttk.Frame(side)
+        opts.pack(anchor="w", pady=(6, 0))
+        ttk.Label(opts, text="Preset", style="Sub.TLabel").pack(side="left")
+        self.preset = ttk.Combobox(opts, width=18, state="readonly")
+        self.preset.pack(side="left", padx=(4, 14))
+        self.preset.bind("<<ComboboxSelected>>", lambda _e: env.set_preset(self.preset.get()))
+        ttk.Label(opts, text="Workers", style="Sub.TLabel").pack(side="left")
+        self.workers = tk.IntVar(value=min(6, max(1, (os.cpu_count() or 4) // 2)))
+        ttk.Spinbox(opts, from_=1, to=16, width=4, textvariable=self.workers).pack(side="left", padx=(4, 14))
+        self.redo = tk.BooleanVar(value=False)
+        ttk.Checkbutton(opts, text="Re-convert done ones", variable=self.redo).pack(side="left")
         self.chips = {}
         chips = ttk.Frame(head)
         chips.pack(side="right")
@@ -135,15 +147,6 @@ class App:
         for b in (self.btn_scan, self.btn_conv, self.btn_bs, self.btn_qa, self.btn_fix, self.btn_patch, self.btn_doc,
                   self.btn_stop):
             b.pack(side="left", padx=(0, 6))
-        self.redo = tk.BooleanVar(value=False)
-        ttk.Checkbutton(top, text="Re-convert done ones", variable=self.redo).pack(side="right")
-        self.workers = tk.IntVar(value=min(6, max(1, (os.cpu_count() or 4) // 2)))
-        ttk.Spinbox(top, from_=1, to=16, width=4, textvariable=self.workers).pack(side="right", padx=(4, 14))
-        ttk.Label(top, text="Workers", style="Sub.TLabel").pack(side="right")
-        self.preset = ttk.Combobox(top, width=15, state="readonly")
-        self.preset.pack(side="right", padx=(4, 14))
-        self.preset.bind("<<ComboboxSelected>>", lambda _e: env.set_preset(self.preset.get()))
-        ttk.Label(top, text="Preset", style="Sub.TLabel").pack(side="right")
 
         flt = ttk.Frame(root, padding=(14, 4))
         flt.pack(fill="x")
@@ -311,7 +314,7 @@ class App:
                         if env.preset() in presets:
                             self.preset.set(env.preset())
                         else:
-                            self.say("Next: pick your UBE body preset (top right) - the one you build your UBE body "
+                            self.say("Next: pick your UBE body preset (top, under Modpack...) - the one you build your UBE body "
                                      "with in BodySlide. The fit check uses it.")
                     self.populate()
                 elif kind == "ask":
@@ -578,7 +581,9 @@ class App:
                 elif name is None:
                     self.say("   " + base)
                 self.q.put(("prog", (i, total, f"Converting {i}/{total}   {(time.time() - t0) / max(i, 1):.1f} s per piece")))
-            made, failed = tc.convert([i["base"] for i in sel], self.workers.get(), on, lambda: self.stop_flag)
+            prep = lambda i, total: self.q.put(("prog", (i, total, f"Copying the outfit meshes {i}/{total}   "
+                                                                   "(first step, then the conversion starts)")))
+            made, failed = tc.convert([i["base"] for i in sel], self.workers.get(), on, lambda: self.stop_flag, prep)
             self.say(f"Converted {len(made)}, failed {len(failed)}  ({time.time() - t0:.0f} s)")
             if made and preset and not self.stop_flag:
                 self._qa(made, preset)
@@ -596,7 +601,7 @@ class App:
             return
         preset = self.preset.get()
         if not preset:
-            messagebox.showinfo("UBE Tailor", "Pick your UBE body preset first (top right).")
+            messagebox.showinfo("UBE Tailor", "Pick your UBE body preset first (top, under Modpack...).")
             return
 
         def work():
