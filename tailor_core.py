@@ -941,6 +941,85 @@ def slot_cover(sets):
     return out
 
 
+CROTCH_RAY = 4.0         # how far out from the vulva fabric still counts as covering it
+
+
+def _crotch_rays(refs):
+    """(origins, directions) of rays from the UBE body's vulva outward (the body normal smoothed over 60 points, so
+    the groove's own walls do not turn the rays sideways)."""
+    body = next(r for r in refs if r.key == "body")
+    B, BF = body.verts, body.tris
+    N = np.zeros_like(B)
+    fn = np.cross(B[BF[:, 1]] - B[BF[:, 0]], B[BF[:, 2]] - B[BF[:, 0]])
+    for k in range(3):
+        np.add.at(N, BF[:, k], fn)
+    sel = np.nonzero((np.abs(B[:, 0]) < 0.6) & (B[:, 2] > 64.5) & (B[:, 2] < 67.5) & (B[:, 1] > 0.5))[0][::4]
+    D = N[knn(B, B[sel], 60)[1]].sum(1)
+    D /= np.linalg.norm(D, axis=1, keepdims=True) + 1e-12
+    return B[sel] + 0.05 * D, D
+
+
+def _crotch_one(set_name, ref_names, O, D):
+    """Share of the vulva rays that hit the piece's own visible shapes within CROTCH_RAY (Moller-Trumbore)."""
+    ss = ET.parse(os.path.join(mp.BS, "SliderSets", mp.safe(set_name) + ".osp")).getroot().find("SliderSet")
+    nif = NifFile(os.path.join(mp.BS, "ShapeData", ss.findtext("DataFolder"), ss.findtext("SourceFile")))
+    zapped = {d.get("target") for sl in ss.findall("Slider") if sl.get("zap") == "true" for d in sl.findall("Data")}
+    Vs, Fs, off = [], [], 0
+    for s in nif.shapes:
+        if s.name in ref_names or s.name in zapped or not (s.textures.get("Diffuse") or "") \
+                or re.match(r"(virtual|3ba|collision)", s.name, re.I):
+            continue
+        Vs.append(np.array(s.verts, dtype=np.float64))
+        Fs.append(np.array(s.tris, dtype=np.int64) + off)
+        off += len(Vs[-1])
+    if not Vs or not len(O):
+        return 0.0
+    V, F = np.vstack(Vs), np.vstack(Fs)
+    F = F[np.linalg.norm(V[F].mean(1) - O.mean(0), axis=1) < CROTCH_RAY + 4]
+    if not len(F):
+        return 0.0
+    a = V[F[:, 0]]
+    e1, e2 = V[F[:, 1]] - a, V[F[:, 2]] - a
+    hit = 0
+    for o, d in zip(O, D):
+        p = np.cross(d, e2)
+        det = (e1 * p).sum(1)
+        ok = np.abs(det) > 1e-9
+        inv = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)
+        s = o - a
+        u = (s * p).sum(1) * inv
+        q = np.cross(s, e1)
+        v = (q * d).sum(1) * inv
+        t = (e2 * q).sum(1) * inv
+        hit += bool(np.any(ok & (u >= 0) & (v >= 0) & (u + v <= 1) & (t > 0) & (t < CROTCH_RAY)))
+    return hit / len(O)
+
+
+def crotch_cover(sets):
+    """{set: share 0..1} for converted pieces: how much of the UBE vulva the piece's fabric hides when seen from
+    outside (merged_patch.smart_slots: UBE and TNG hide the vulva for anything worn on slot 52 / 53, so a garter,
+    a belt or crotchless panties on those slots made it vanish). Kept in the database; a new conversion clears it."""
+    db = load_db()
+    out, todo = {}, []
+    for s in sets:
+        c = db.get(s, {}).get("crotch")
+        if c is not None:
+            out[s] = c
+        elif s in db and os.path.isfile(os.path.join(mp.BS, "SliderSets", mp.safe(s) + ".osp")):
+            todo.append(s)
+    if todo:
+        refs = mp.load_refs()
+        ref_names = {r.shape for r in refs}
+        O, D = _crotch_rays(refs)
+        for s in todo:
+            try:
+                db[s]["crotch"] = out[s] = round(_crotch_one(s, ref_names, O, D), 3)
+            except Exception:
+                continue
+        save_db(db)
+    return out
+
+
 def motion_check(set_name, refs):
     """How the outfit follows the body when it moves (walking, combat, sitting): every outfit point lying on the
     body is compared with the UBE body's bone weights under it. A point weighted to other bones separates from or

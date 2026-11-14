@@ -14,6 +14,15 @@
   (6 at a time), up to a minute for big bras and dresses. Also on the command line: `python fix_clip.py`.
 - Preset, Workers and "Re-convert done ones" moved up next to Modpack / Requirements / Guide: in a narrow window
   they were pushed out of sight behind the buttons, so the preset could not be picked.
+- **Smart slots 52 / 53 - the vulva no longer vanishes under garters, belts and crotchless panties.** UBE (and its
+  TNG addon) hide the vulva for anything worn on slot 52 ("underwear") or 53 ("vagina cover"), but 3BA mods put
+  many pieces there that do not cover it: garters, belts, thigh armor, skirts, stockings, piercings, open panties.
+  For every converted piece on 52 / 53 that is not a body piece, the Tailor now checks whether its fabric hides the
+  vulva when seen from outside (rays from the UBE body outward; kept in the database as db[set]["crotch"]); below
+  60 % the piece loses the slot (53 -> 54, 52 -> 60 when nothing else is left, neither is used by UBE). Panties,
+  pants, closed thongs and pantyhose keep it. On the test list: 515 records changed, e.g. all garters / belts and
+  the crotchless "Lewd" panties; regular ones 93-99 % covered, crotchless 0-18 %. Same setting as smart slots
+  (`smart_slots`, default on); takes effect at the next Scan / Update patch, no BodySlide build needed.
 - **Outfits whose plugin writes the mesh path with a "meshes\" prefix are converted now.** The game drops that
   prefix, the Tailor did not: it looked for "meshes\meshes\...", found nothing and listed the piece as "Mesh
   missing in the mod", so it stayed 3BA and clipped on the UBE body at every preset. On the test list: 141

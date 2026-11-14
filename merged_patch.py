@@ -245,14 +245,19 @@ def _bod(d):
     return next((struct.unpack_from("<I", x)[0] for t, x in subrecords(d) if t in (b"BOD2", b"BODT")), 0)
 
 
-def _strip_bod(t, x, mask):
-    if mask and t in (b"BOD2", b"BODT") and len(x) >= 4:
-        return struct.pack("<I", struct.unpack_from("<I", x)[0] & ~mask) + x[4:]
+def _strip_bod(t, x, mask, add=0):
+    if (mask or add) and t in (b"BOD2", b"BODT") and len(x) >= 4:
+        return struct.pack("<I", struct.unpack_from("<I", x)[0] & ~mask | add) + x[4:]
     return x
 
 
 SMART = {34: 1 << 4, 38: 1 << 8}     # forearms, calves: often claimed by body armor that does not cover them
 COVER_MIN = 15                       # outfit points on those bones that count as "covers it"
+CROTCH = {52: 1 << 22, 53: 1 << 23}  # UBE / TNG hide the vulva for anything on these (underwear, "vagina cover")
+CROTCH_MIN = 0.6                     # share of the vulva the piece's fabric must hide to keep the slot
+FREE_SLOT = 1 << 30                  # slot 60: given to a piece that would be left without any slot
+FREE_LEG = 1 << 24                   # slot 54 (leg, secondary) for a leg piece that lost 53; UBE uses neither
+SLOT_NAMES = {**SMART, **CROTCH}
 
 
 def smart_slots(e, armo_data, converted):
@@ -260,24 +265,37 @@ def smart_slots(e, armo_data, converted):
     A body piece (slot 32) whose mesh claims slot 34 / 38 but has none of its own shapes on the forearms / calves
     (tc.slot_cover, only once it is built as UBE) loses that slot: two worn meshes on one slot make the game hide
     one of them (boots or gauntlets vanish). The armor itself loses the slot when all its addons that had it did."""
-    out = {"arma": {}, "armo": {}}
+    out = {"arma": {}, "armo": {}, "arma_add": {}, "armo_add": {}}
     if not env.S.get("smart_slots", True):
         return out
     n = len(e["ms"])
     armas = {fid & 0xFFFFFF: d for sig, fid, d, _fl in e["recs"] if sig == b"ARMA" and fid >> 24 >= n}
-    cand = {}
+    cand, crotch = {}, {}
     for _o, arma_objs in e["todo"]:
         for a in arma_objs:
             bod = _bod(armas[a])
-            bits = [s for s, bit in SMART.items() if bod & 4 and bod & bit]
             m3 = tc.mesh_path(next((zstr(x) for t, x in subrecords(armas[a]) if t == b"MOD3"), ""))
-            if bits and m3.lower() in converted:     # same key as mod_records uses to switch the mesh
-                cand[a] = (bits, tc.set_name_of(re.sub(r"(?i)_[01]\.nif$", "", m3)))
+            if m3.lower() not in converted:          # same key as mod_records uses to switch the mesh
+                continue
+            name = tc.set_name_of(re.sub(r"(?i)_[01]\.nif$", "", m3))
+            bits = [s for s, bit in SMART.items() if bod & 4 and bod & bit]
+            if bits:
+                cand[a] = (bits, name)
+            cbits = [s for s, bit in CROTCH.items() if not bod & 4 and bod & bit]
+            if cbits:                                # not a body piece (those carry the UBE body itself)
+                crotch[a] = (cbits, name)
     cover = tc.slot_cover(sorted({s for _b, s in cand.values()})) if cand else {}
     for a, (bits, name) in cand.items():
         mask = sum(SMART[s] for s in bits if name in cover and cover[name].get(str(s), COVER_MIN) < COVER_MIN)
         if mask:
             out["arma"][a] = mask
+    ccov = tc.crotch_cover(sorted({s for _b, s in crotch.values()})) if crotch else {}
+    for a, (bits, name) in crotch.items():
+        if name in ccov and ccov[name] < CROTCH_MIN:
+            out["arma"][a] = out["arma"].get(a, 0) | sum(CROTCH[s] for s in bits)
+    for a, mask in out["arma"].items():
+        if not _bod(armas[a]) & ~mask & 0xFFFFFFFF:  # it must keep some slot to be shown at all: leg pieces
+            out["arma_add"][a] = FREE_LEG if mask & CROTCH[53] else FREE_SLOT    # 53 -> 54, the rest -> 60
     for armo_obj, arma_objs in e["todo"]:
         bod = _bod(armo_data[armo_obj])
         mask = 0
@@ -285,8 +303,19 @@ def smart_slots(e, armo_data, converted):
             had = [a for a in arma_objs if _bod(armas[a]) & bit]
             if bod & 4 and bod & bit and had and all(out["arma"].get(a, 0) & bit for a in had):
                 mask |= bit
+        for s, bit in CROTCH.items():
+            had = [a for a in arma_objs if _bod(armas[a]) & bit]
+            if bod & bit and had and all(out["arma"].get(a, 0) & bit for a in had):
+                mask |= bit
         if mask:
             out["armo"][armo_obj] = mask
+        add = 0                                      # the armor must hold the slots its addons are shown on
+        for a in arma_objs:
+            add |= out["arma_add"].get(a, 0)
+        if mask and not bod & ~mask & 0xFFFFFFFF and not add:
+            add = FREE_LEG if mask & CROTCH[53] else FREE_SLOT
+        if add:
+            out["armo_add"][armo_obj] = add
     return out
 
 
@@ -302,6 +331,8 @@ def mod_records(e, index, new_i, ids, ui, target, extra, converted):
     win = e.get("win", {})
     strip = e.get("strip", {}).get("armo", {})          # armor -> slot bits to remove
     amask = e.get("strip", {}).get("arma", {})          # armor addon -> slot bits to remove
+    sadd = e.get("strip", {}).get("armo_add", {})       # ... and the free slot to add when none is left
+    aadd = e.get("strip", {}).get("arma_add", {})
     # UBE's naked body sits on 32 + 53, so body pieces normally get 53 too. But when the outfit has its own slot-53
     # piece (pants, leggings), two pieces worn together would share slot 53 and the game hides one of them.
     own53 = any(next((struct.unpack_from("<I", x)[0] for t, x in subrecords(d) if t in (b"BOD2", b"BODT")), 0) & 1 << 23
@@ -320,7 +351,7 @@ def mod_records(e, index, new_i, ids, ui, target, extra, converted):
                         f0 = struct.unpack_from("<I", x)[0]
                         if f0 & 4 and not own53:        # body slot 32 -> also UBE slot 53
                             x = struct.pack("<I", f0 | 1 << 23) + x[4:]
-                        x = _strip_bod(t, x, amask.get(a, 0))
+                        x = _strip_bod(t, x, amask.get(a, 0), aadd.get(a, 0))
                     elif t == b"RNAM":
                         x = struct.pack("<I", ui << 24 | target)
                     elif t == b"MODL" and len(x) == 4:
@@ -348,7 +379,8 @@ def mod_records(e, index, new_i, ids, ui, target, extra, converted):
             if t == b"MODL" and len(x) == 4 and not placed:
                 subs.append(ins)                        # first in the list so it wins for UBE races
                 placed = True
-            subs.append(tc._sub(t, _strip_bod(t, remap_sub(t, x, Ra, ARMO_FIDS), strip.get(armo_obj, 0))))
+            subs.append(tc._sub(t, _strip_bod(t, remap_sub(t, x, Ra, ARMO_FIDS), strip.get(armo_obj, 0),
+                                              sadd.get(armo_obj, 0))))
         if not placed:
             subs.append(ins)
         armo_body += tc._rec(b"ARMO", R(n << 24 | armo_obj), fl, b"".join(subs))
@@ -361,7 +393,8 @@ def mod_records(e, index, new_i, ids, ui, target, extra, converted):
         if a in e.get("awin", {}):
             wname, wms, data, fl = e["awin"][a]
             Ra = remapper(wms, wname, index)
-        body = b"".join(tc._sub(t, _strip_bod(t, remap_sub(t, x, Ra, ARMA_FIDS), mask)) for t, x in subrecords(data))
+        body = b"".join(tc._sub(t, _strip_bod(t, remap_sub(t, x, Ra, ARMA_FIDS), mask, aadd.get(a, 0)))
+                        for t, x in subrecords(data))
         arma_body += tc._rec(b"ARMA", R(n << 24 | a), fl, body)
         n_over += 1
     return armo_body, arma_body, len(e["todo"]), len(done) + n_over
@@ -520,7 +553,7 @@ def build(add=(), exclude=(), log=print, add_foreign=()):
             for a, mask in list(stripped.items())[:3]:
                 ed = next((zstr(x) for t, x in subrecords(src_arma[a]) if t == b"EDID"), f"{a:06x}")
                 log(f"   smart slots: {ed} ({name}) - slot(s) "
-                    + ", ".join(str(s) for s, bit in SMART.items() if mask & bit) + " removed: nothing of it there")
+                    + ", ".join(str(s) for s, bit in SLOT_NAMES.items() if mask & bit) + " removed: nothing of it there")
         try:                                   # renumber once on a throw-away index to catch odd data early
             mod_records(e, {k: 0 for k in names}, 0, {f"{low}|{a:06x}": FIRST_ID for _o, al in todo for a in al},
                         0, target, extra, converted)
@@ -531,7 +564,8 @@ def build(add=(), exclude=(), log=print, add_foreign=()):
     if n_win:
         log(f"   {n_win} armor(s) copied from a later plugin that changes them (balance patch etc.) - its changes stay")
     if n_strip:
-        log(f"   smart slots: {n_strip} armor addon(s) lost forearm / calf slots their mesh does not cover")
+        log(f"   smart slots: {n_strip} armor addon(s) lost forearm / calf / crotch (52, 53) slots their mesh does "
+            "not cover")
     n_over = 0
     for pname in forder:
         if pname.lower() not in enabled:
