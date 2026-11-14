@@ -103,11 +103,12 @@ def _closest_bary(p, a, b, c):
     return out
 
 
-def project(P, V, F, adj=None, k=4, chunk=2048):
-    """Closest point on mesh (V,F) for each P. Returns (tri index, barycentric (N,3), distance)."""
+def project(P, V, F, adj=None, k=4, chunk=2048, idx=None):
+    """Closest point on mesh (V,F) for each P. Returns (tri index, barycentric (N,3), distance).
+    idx: the nearest mesh points of each P when the caller found them already (fix_clip keeps search trees)."""
     if adj is None:
         adj = tri_adjacency(len(V), F)
-    _, I = knn(V, P, k)
+    I = knn(V, P, k)[1] if idx is None else idx
     tri = np.empty(len(P), dtype=np.int64)
     bary = np.empty((len(P), 3))
     dist = np.empty(len(P))
@@ -121,7 +122,11 @@ def project(P, V, F, adj=None, k=4, chunk=2048):
         q = bc[..., 0:1] * a + bc[..., 1:2] * b + bc[..., 2:3] * c
         d2 = ((q - p) ** 2).sum(-1)
         d2[~valid] = np.inf
-        j = d2.argmin(1)
+        # equally close triangles (a point nearest to an edge, or to a seam with doubled points): always take the
+        # lowest triangle number, so the answer never depends on the search order (the side of the body - in or
+        # out - is read from that triangle)
+        tie = d2 <= d2.min(1, keepdims=True) * (1 + 1e-9) + 1e-12
+        j = np.where(tie, cc, np.iinfo(np.int64).max).argmin(1)
         r = np.arange(len(j))
         tri[s:s + chunk] = cc[r, j]
         bary[s:s + chunk] = bc[r, j]

@@ -1,6 +1,19 @@
 # Changelog
 
 ## Unreleased
+- **Fix clipping (experimental):** a new button. Pick the body presets you play with (all are ticked - keep it that
+  way: fixing for a few makes the others worse) and the Tailor changes how the ticked converted pieces (or all of
+  them) follow the body sliders, so they stay outside the UBE body at every one of those presets. The shape at rest
+  stays as converted; only the project's slider data changes (the original is kept as `.osd.orig`). Every point
+  is checked on its own at every preset: a change is kept only where it does not sink in anywhere it did not
+  before, so no piece gets worse at any of your presets; pieces that already fit them all are left alone. Run
+  Batch Build in BodySlide again afterwards. Fixed pieces show "clipping fixed" in the list; the Tailor remembers
+  which pieces it did for which presets and skips them next time; converting a piece again undoes its fix.
+  Test (62 pieces of a real list, 27 presets, fit check before/after): points inside 70,350 -> 15,007, no piece
+  worse at any preset; worst grade per piece of 50 random pieces A 20 / B 13 / C 17 -> A 37 / B 7 / C 6; about 8 s per piece
+  (6 at a time), up to a minute for big bras and dresses. Also on the command line: `python fix_clip.py`.
+- The fit check (and conversion) no longer depends on search order when an outfit point is equally close to two
+  body triangles (at seams): the same triangle is always used, so in/out is always read the same way.
 - **Skyrim LE meshes are ported to SE automatically** (le_port.py, with PyNifly: shapes, skin, weights, partitions,
   shaders, textures, alpha, string extra data such as BODYTRI and the HDT-SMP path) into the work folder, then
   converted as usual. The mod's own file is never changed. Before, such outfits were listed as "Old LE mesh".

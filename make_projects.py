@@ -387,6 +387,8 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
                         rows.append((n + name, n, None))
         data_for[name] = rows
     write_osd(os.path.join(shape_dir, osd_name), entries)
+    if os.path.isfile(os.path.join(shape_dir, osd_name + ".orig")):
+        os.remove(os.path.join(shape_dir, osd_name + ".orig"))     # a "Fix clipping" copy of the old conversion
 
     out_dir, out_file = os.path.split(base)
     single = out_file.lower().endswith(".nif")          # single-weight mesh: BodySlide builds one file, no _0/_1

@@ -127,11 +127,13 @@ class App:
         self.btn_scan = ttk.Button(top, text="Scan", command=self.do_scan)
         self.btn_conv = ttk.Button(top, text="Convert selected", command=self.do_convert, style="Accent.TButton")
         self.btn_qa = ttk.Button(top, text="Check fit", command=self.do_qa)
+        self.btn_fix = ttk.Button(top, text="Fix clipping", command=self.do_fix)
         self.btn_patch = ttk.Button(top, text="Update patch", command=self.do_patch)
         self.btn_doc = ttk.Button(top, text="Health check", command=self.do_doctor)
         self.btn_bs = ttk.Button(top, text="BodySlide", command=self.do_bodyslide)
         self.btn_stop = ttk.Button(top, text="Stop", command=self.do_stop, state="disabled", style="Danger.TButton")
-        for b in (self.btn_scan, self.btn_conv, self.btn_bs, self.btn_qa, self.btn_patch, self.btn_doc, self.btn_stop):
+        for b in (self.btn_scan, self.btn_conv, self.btn_bs, self.btn_qa, self.btn_fix, self.btn_patch, self.btn_doc,
+                  self.btn_stop):
             b.pack(side="left", padx=(0, 6))
         self.redo = tk.BooleanVar(value=False)
         ttk.Checkbutton(top, text="Re-convert done ones", variable=self.redo).pack(side="right")
@@ -333,7 +335,7 @@ class App:
     def set_busy(self, b):
         self.busy = b
         self.stop_flag = False
-        for w in (self.btn_scan, self.btn_conv, self.btn_bs, self.btn_qa, self.btn_patch, self.btn_doc):
+        for w in (self.btn_scan, self.btn_conv, self.btn_bs, self.btn_qa, self.btn_fix, self.btn_patch, self.btn_doc):
             w["state"] = "disabled" if b else "normal"
         self.btn_stop["state"] = "normal" if b else "disabled"
         if not b:
@@ -391,6 +393,8 @@ class App:
         if mg:                                   # moving: how the piece follows the body's bones
             text += f" · moving {mg}" + (f" ({qa['motion_pct']}% at {qa['motion_bone']})" if mg != "A" else "")
             g = max(g, mg)                       # the worse of the two colours the row
+        if self.db.get(it["set"], {}).get("fixed"):
+            text += " · clipping fixed"
         return text, g
 
     def populate(self):
@@ -600,6 +604,71 @@ class App:
             self.rescan()
         self.run(work)
 
+    # ------------------------------------------------------------ fix clipping
+    def do_fix(self):
+        """Fix clipping for the ticked converted pieces (or all converted ones) at the presets the user picks."""
+        sel = self.chosen(("built", "done"))
+        pieces = sel or [i for i in self.items if i["state"] in ("built", "done")]
+        if not pieces:
+            messagebox.showinfo("UBE Tailor", "Convert some outfits first.")
+            return
+        if tc.running("BodySlide x64.exe") or tc.running("BodySlide.exe"):
+            messagebox.showwarning("UBE Tailor", "BodySlide is open. Close it first - it reads the same project files.")
+            return
+        presets = list(self.preset["values"]) or tc.list_presets()
+        if not presets:
+            messagebox.showinfo("UBE Tailor", "No UBE body presets found (BodySlide\\SliderPresets).")
+            return
+        FixWindow(self, [i["set"] for i in pieces], presets, ticked=bool(sel))
+
+    def run_fix(self, sets, presets):
+        import fix_clip
+
+        def work():
+            t0 = time.time()
+            done = fix_clip.done_for(tc.load_db(), sets, presets)
+            if done:
+                self.say(f"{len(done)} piece(s) were already fixed or checked for these presets - skipped.")
+            if len(done) == len(sets):
+                self.say("Nothing new to fix. (A piece you convert again is fixed again next time.)")
+                return
+            self.say(f"Fixing clipping of {len(sets) - len(done)} piece(s) for {len(presets)} preset(s)... (pieces "
+                     "that already fit every preset are left as they are)")
+            n = Counter()
+            tot = {"before": 0, "after": 0}
+            worst = {"before": Counter(), "after": Counter()}
+
+            def on(i, total, name, rep, err):
+                if err:
+                    n["failed"] += 1
+                    self.say(f"   failed: {name[11:]}: {err}")
+                elif rep:
+                    n[rep["state"]] += 1
+                    for k in ("before", "after"):
+                        tot[k] += rep[k]
+                        worst[k][max(v[k]["grade"] for v in rep["presets"].values())] += 1
+                    if rep["state"] == "fixed":
+                        g0 = max(v["before"]["grade"] for v in rep["presets"].values())
+                        g1 = max(v["after"]["grade"] for v in rep["presets"].values())
+                        self.say(f"   {name[11:]}: points inside {rep['before']} -> {rep['after']}   "
+                                 f"(worst preset {tc.GRADES[g0]} -> {tc.GRADES[g1]})")
+                left = (time.time() - t0) / max(i, 1) * (total - i)
+                self.q.put(("prog", (i, total, f"Fixing clipping {i}/{total}   about {left / 60:.0f} min left")))
+            fix_clip.fix_many(sets, presets, self.workers.get(), on, lambda: self.stop_flag)
+            self.say(f"Fix clipping: {n['fixed']} fixed, {n['fine']} already fit every preset, {n['unchanged']} "
+                     f"could not be improved without harm (left as they were), {n['failed']} failed  "
+                     f"({time.time() - t0:.0f} s)" + ("  - stopped" if self.stop_flag else ""))
+            self.say(f"   points inside, all chosen presets together: {tot['before']:,} -> {tot['after']:,}")
+            for k in ("before", "after"):
+                self.say(f"   worst grade per piece {k}: " + ", ".join(
+                    f"{tc.GRADES[g]} {c}" for g, c in sorted(worst[k].items())))
+            if n["fixed"]:
+                self.say("Next: press BodySlide -> group 'UBE Auto Conversions' -> your preset -> tick Build Morphs -> "
+                         "Batch Build again, so the game gets the fixed pieces. Close BodySlide when it is done - "
+                         "the Tailor then scans by itself.")
+            self.rescan()
+        self.run(work)
+
     def do_patch(self):
         if tc.running("SkyrimSE.exe"):
             messagebox.showwarning("UBE Tailor", "The game is running. Close it first.")
@@ -705,6 +774,74 @@ class App:
 
 
 # ---------------------------------------------------------------- questions
+class FixWindow:
+    """Pick the presets to fix clipping for (all ticked: fixing for a few makes the others worse)."""
+
+    def __init__(self, app, sets, presets, ticked):
+        self.app, self.sets = app, sets
+        win = self.win = tk.Toplevel(app.root, bg=BG, padx=16, pady=12)
+        win.title("Fix clipping")
+        win.transient(app.root)
+        win.geometry("760x560")
+        win.minsize(560, 380)
+        ttk.Label(win, text="Fix clipping", style="Title.TLabel").pack(anchor="w")
+        what = f"the {len(sets)} ticked piece(s)" if ticked else f"all {len(sets)} converted pieces"
+        ttk.Label(win, style="Sub.TLabel", wraplength=720, justify="left", text=(
+            f"Changes how {what} follow the body sliders, so they stay outside the UBE body at every preset ticked "
+            "below (the shape at rest stays the same). A piece is only changed where that helps without making it "
+            "worse at any of these presets; pieces that already fit them are left alone. Keep all your presets "
+            "ticked: fixing for a few makes the others worse. Afterwards run Batch Build in BodySlide again. "
+            "Experimental - check the pieces in game.")).pack(anchor="w", pady=(0, 8))
+        bot = ttk.Frame(win)
+        bot.pack(side="bottom", fill="x", pady=(10, 0))
+        box = tk.Frame(win, bg=BG)
+        box.pack(fill="both", expand=True)
+        canvas = tk.Canvas(box, bg=BG, highlightthickness=0)
+        sb = ttk.Scrollbar(box, orient="vertical", command=canvas.yview)
+        rows = tk.Frame(canvas, bg=BG)
+        rows.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=rows, anchor="nw")
+        canvas.configure(yscrollcommand=sb.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        sb.pack(side="left", fill="y")
+        wheel = lambda ev: canvas.yview_scroll(int(-ev.delta / 120) or (-1 if ev.delta > 0 else 1), "units")
+        canvas.bind("<Enter>", lambda _e: canvas.bind_all("<MouseWheel>", wheel))
+        canvas.bind("<Leave>", lambda _e: canvas.unbind_all("<MouseWheel>"))
+        win.bind("<Destroy>", lambda e: canvas.unbind_all("<MouseWheel>") if e.widget is win else None)
+        self.picks = {}
+        for k, name in enumerate(presets):
+            v = tk.BooleanVar(value=True)
+            self.picks[name] = v
+            ttk.Checkbutton(rows, text=name, variable=v, command=self.refresh).grid(
+                row=k // 3, column=k % 3, sticky="w", padx=(0, 18), pady=2)
+        self.count = ttk.Label(bot, text="", style="Sub.TLabel")
+        ttk.Button(bot, text="All", command=lambda: self.tick(True)).pack(side="left")
+        ttk.Button(bot, text="None", command=lambda: self.tick(False)).pack(side="left", padx=6)
+        self.count.pack(side="left", padx=10)
+        self.ok = ttk.Button(bot, text="Fix", command=self.go, style="Accent.TButton")
+        self.ok.pack(side="right")
+        ttk.Button(bot, text="Cancel", command=win.destroy).pack(side="right", padx=6)
+        self.refresh()
+
+    def chosen(self):
+        return [n for n, v in self.picks.items() if v.get()]
+
+    def refresh(self):
+        n = len(self.chosen())
+        self.count["text"] = f"{n} of {len(self.picks)} presets ticked"
+        self.ok["state"] = "normal" if n else "disabled"
+
+    def tick(self, on):
+        for v in self.picks.values():
+            v.set(on)
+        self.refresh()
+
+    def go(self):
+        presets = self.chosen()
+        self.win.destroy()
+        self.app.run_fix(self.sets, presets)
+
+
 def ask_edition(root):
     """Ask which Skyrim the modpack runs (only when SkyrimSE.exe cannot be read); the answer is saved."""
     win = tk.Toplevel(root, bg=BG, padx=20, pady=16)
