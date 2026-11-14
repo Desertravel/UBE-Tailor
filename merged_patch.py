@@ -270,7 +270,7 @@ def smart_slots(e, armo_data, converted):
         for a in arma_objs:
             bod = _bod(armas[a])
             bits = [s for s, bit in SMART.items() if bod & 4 and bod & bit]
-            m3 = next((zstr(x) for t, x in subrecords(armas[a]) if t == b"MOD3"), "").replace("/", "\\")
+            m3 = tc.mesh_path(next((zstr(x) for t, x in subrecords(armas[a]) if t == b"MOD3"), ""))
             if bits and m3.lower() in converted:     # same key as mod_records uses to switch the mesh
                 cand[a] = (bits, tc.set_name_of(re.sub(r"(?i)_[01]\.nif$", "", m3)))
     cover = tc.slot_cover(sorted({s for _b, s in cand.values()})) if cand else {}
@@ -326,8 +326,8 @@ def mod_records(e, index, new_i, ids, ui, target, extra, converted):
                     elif t == b"MODL" and len(x) == 4:
                         continue                        # the old additional races
                     elif t == b"MOD3":
-                        path = zstr(x)
-                        key = path.replace("/", "\\").lower()
+                        path = tc.mesh_path(zstr(x))
+                        key = path.lower()
                         if not key.startswith("!ube\\") and key in converted:
                             x = ("!UBE\\" + path).encode("cp1252", "replace") + b"\0"
                     else:
@@ -420,8 +420,8 @@ def foreign_overrides(patch, converted, log=print):
         if src not in s53:
             s53[src] = tc.slot53_models(loc[src]) if src in loc else set()
         subs, changed = [], False
-        m3 = next((zstr(x) for t, x in subrecords(f["data"]) if t == b"MOD3"), "")
-        key = m3.replace("/", "\\").lower()
+        m3 = tc.mesh_path(next((zstr(x) for t, x in subrecords(f["data"]) if t == b"MOD3"), ""))
+        key = m3.lower()
         for t, x in subrecords(f["data"]):
             if t == b"MOD3" and not key.startswith("!ube\\") and key in converted:
                 x = ("!UBE\\" + m3).encode("cp1252", "replace") + b"\0"

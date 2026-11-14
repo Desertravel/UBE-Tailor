@@ -14,6 +14,11 @@
   (6 at a time), up to a minute for big bras and dresses. Also on the command line: `python fix_clip.py`.
 - Preset, Workers and "Re-convert done ones" moved up next to Modpack / Requirements / Guide: in a narrow window
   they were pushed out of sight behind the buttons, so the preset could not be picked.
+- **Outfits whose plugin writes the mesh path with a "meshes\\" prefix are converted now.** The game drops that
+  prefix, the Tailor did not: it looked for "meshes\meshes\...", found nothing and listed the piece as "Mesh
+  missing in the mod", so it stayed 3BA and clipped on the UBE body at every preset. On the test list: 141
+  pieces (122 of TEWOBA - The Expanded World of Bikini Armor, 18 ninistuff outfits); after the fix they convert
+  and grade A at all tested presets. Scan, the patch and smart slots all read paths the same way now.
 - Fix clipping: a piece with no visible outfit shape (only hidden or untextured ones) is listed as already fine
   instead of failing with KeyError.
 - A piece whose conversion crashes inside the mesh library (PyNifly: "OSError ... access violation", seen once in

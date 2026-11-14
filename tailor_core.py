@@ -91,13 +91,23 @@ def save_db(db):
 
 
 # ---------------------------------------------------------------- scan
+_MESH_PREFIX = re.compile(r"(?i)^[\\/]*(data[\\/]+)?meshes[\\/]+")
+
+
+def mesh_path(m3):
+    """An armor addon's model path as the game reads it: meshes-relative, backslashes. Some mods (TEWOBA, a few
+    ninistuff outfits) write "meshes\\armor\\..." - the game drops that prefix, so must we, or the mesh is not
+    found."""
+    return _MESH_PREFIX.sub("", (m3 or "").replace("/", "\\")).lstrip("\\")
+
+
 def arma_info(data):
     flags, m3, edid, rnam, races = 0, None, "", None, []
     for t, x in subrecords(data):
         if t in (b"BOD2", b"BODT"):
             flags = struct.unpack_from("<I", x)[0]
         elif t == b"MOD3":
-            m3 = zstr(x)
+            m3 = mesh_path(zstr(x))
         elif t == b"EDID":
             edid = zstr(x)
         elif t == b"RNAM" and len(x) == 4:
@@ -186,7 +196,7 @@ def slot53_models(path):
         if bod(d) & 4 and not bod(d) & 1 << 23:
             m3 = next((zstr(x) for t, x in subrecords(d) if t == b"MOD3"), "")
             if m3:
-                out.add(m3.replace("/", "\\").lower())
+                out.add(mesh_path(m3).lower())
     return out
 
 
