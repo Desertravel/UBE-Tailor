@@ -1,6 +1,14 @@
 # Changelog
 
 ## Unreleased
+- **Colour variants of converted outfits show on the right parts again.** Many outfits make their colour versions
+  with alternate textures on the armor addon (white / black / gold sets of [COCO] Mysterious Mage, Caenarvon,
+  ralfeta panties...). The game finds the part by its index in the mesh, and a converted mesh lists its parts in
+  another order (the 3BA body shapes are gone, the UBE body is added), so the textures landed on the wrong parts:
+  metal on the lace, the dress texture on the body, parts looking hidden. The UBE copies in UBE Tailor.esp now get
+  each entry's index from the mesh BodySlide built (the part that had it in the outfit's own mesh, else the one
+  with the entry's name), and never put one on the UBE body, feet or hands. Fixed at the next Scan for everything
+  converted before (171 armor addons on the test list), no conversion or BodySlide build needed.
 - **A hand-made UBE version always wins.** When another mod ships a UBE BodySlide project for an outfit (a conversion
   someone made by hand in Outfit Studio and shared online, or UBE's own armor conversions), the piece shows as
   "Hand-made UBE · <mod>" and is never converted. Both projects build the same mesh (meshes\!UBE\<the outfit's own

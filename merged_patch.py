@@ -190,6 +190,94 @@ def remap_vmad(x, R):
     return bytes(b)
 
 
+_SHAPES = {}
+
+
+def built_shapes(path):
+    """Shape names, in order, of the UBE mesh meshes/!UBE/<path> as the game loads it (the highest priority loose
+    file), or None. Cached by file time."""
+    for d in env.loose_dirs():
+        f = os.path.join(d, "meshes", "!UBE", path)
+        if os.path.isfile(f):
+            try:
+                st = os.stat(f)
+                key = (os.path.normcase(f), st.st_mtime_ns, st.st_size)
+                if key not in _SHAPES:
+                    from nifly_env import NifFile
+                    _SHAPES[key] = [sh.name for sh in NifFile(f).shapes]
+                return _SHAPES[key]
+            except Exception:
+                return None
+    return None
+
+
+def source_shapes(path):
+    """Shape names, in order, of the outfit's own (3BA) mesh: the Tailor's copy of it, else the game's file."""
+    cands = [os.path.join(mp.WORK, "meshes", path)] if mp.WORK else []
+    if not any(os.path.isfile(f) for f in cands):
+        try:
+            if "res" not in _SHAPES:
+                _SHAPES["res"] = tc.Resolver()
+            kind, f = _SHAPES["res"].resolve(path)
+            if kind == "loose":
+                cands.append(f)
+        except Exception:
+            pass
+    for f in cands:
+        if os.path.isfile(f):
+            try:
+                st = os.stat(f)
+                key = (os.path.normcase(f), st.st_mtime_ns, st.st_size)
+                if key not in _SHAPES:
+                    from nifly_env import NifFile
+                    _SHAPES[key] = [sh.name for sh in NifFile(f).shapes]
+                return _SHAPES[key]
+            except Exception:
+                continue
+    return None
+
+
+UBE_PARTS = {"BaseShape", "Feet", "Hands"}           # the UBE reference shapes, exactly as named
+
+
+def reindex_alt(x, names, old=None):
+    """Alternate textures (MO3S...) with each entry's 3D index set to where its shape is in the UBE mesh. The game
+    finds the shape by that index, and a converted mesh lists its shapes in another order (the old 3BA body shapes
+    are gone, the UBE body is added), so the colour variants of an outfit landed on the wrong shapes: dress texture
+    on the body, metal on the lace ([COCO] Mysterious Mage). The game goes by the index alone (authors often leave
+    a wrong name), so with the outfit's own mesh (old) the shape is the one at that index there; without it, the one
+    with the entry's name. Entries whose shape is not in the UBE mesh stay as they are."""
+    if not names or len(x) < 4:
+        return x
+    n = struct.unpack_from("<I", x, 0)[0]
+    o, out = 4, [x[:4]]
+    low = [m.lower() for m in names]
+    try:
+        for _ in range(n):
+            ln = struct.unpack_from("<I", x, o)[0]
+            name = x[o + 4:o + 4 + ln]
+            tx, idx = struct.unpack_from("<Ii", x, o + 4 + ln)
+            own = name.decode("cp1252", "replace").rstrip("\0").lower()
+            was = old[idx].lower() if old and 0 <= idx < len(old) else None   # where the game showed it before
+            nm = was if was in low else own
+            if 0 <= idx < len(names) and names[idx].lower() == nm:
+                pass                                    # already right (the game ignores case)
+            elif nm in low:
+                idx = low.index(nm)
+            if 0 <= idx < len(names) and names[idx] in UBE_PARTS:
+                # never on the UBE body / feet / hands the Tailor added (they keep the skin): the outfit shape with
+                # the entry's own name if there is one, else the entry goes
+                alt = [k for k, m in enumerate(low) if m == own and names[k] not in UBE_PARTS]
+                idx = alt[0] if alt else -1
+            if idx >= 0:
+                out.append(x[o:o + 4 + ln] + struct.pack("<Ii", tx, idx))
+            o += 12 + ln
+    except struct.error:
+        return x
+    out[0] = struct.pack("<I", len(out) - 1)
+    return b"".join(out) + x[o:]
+
+
 def remap_sub(t, x, R, fids):
     if t in fids and len(x) == 4:
         return _u32(x, R)
@@ -402,6 +490,9 @@ def mod_records(e, index, new_i, ids, ui, target, extra, converted):
             if a not in done:
                 data, fl = armas[a]
                 subs = []
+                m3 = tc.mesh_path(next((zstr(x) for t, x in subrecords(data) if t == b"MOD3"), ""))
+                ube_shapes = built_shapes(m3) if m3 and m3.lower() in converted else None
+                old_shapes = source_shapes(m3) if ube_shapes else None
                 for t, x in subrecords(data):
                     if t == b"EDID":
                         x = zstr(x).encode("cp1252", "replace") + b"_UBE\0"
@@ -414,6 +505,8 @@ def mod_records(e, index, new_i, ids, ui, target, extra, converted):
                         x = struct.pack("<I", ui << 24 | target)
                     elif t == b"MODL" and len(x) == 4:
                         continue                        # the old additional races
+                    elif t == b"MO3S" and ube_shapes:
+                        x = reindex_alt(remap_sub(t, x, R, ARMA_FIDS), ube_shapes, old_shapes)
                     elif t == b"MOD3":
                         path = tc.mesh_path(zstr(x))
                         key = path.lower()
@@ -517,6 +610,10 @@ def foreign_overrides(patch, converted, log=print):
             if t == b"MOD3" and not key.startswith("!ube\\") and key in converted:
                 x = ("!UBE\\" + m3).encode("cp1252", "replace") + b"\0"
                 changed = True
+            elif t == b"MO3S" and not key.startswith("!ube\\") and key in converted:
+                y = reindex_alt(x, built_shapes(m3), source_shapes(m3))
+                changed |= y != x
+                x = y
             elif t in (b"BOD2", b"BODT") and key.replace("!ube\\", "", 1) in s53[src]:
                 f0 = struct.unpack_from("<I", x)[0]
                 if f0 & 4 and f0 & 1 << 23:
