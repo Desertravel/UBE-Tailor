@@ -158,9 +158,16 @@ def main():
         shutil.rmtree(out)
     os.makedirs(out)
     print(f"building {name} ({'with' if not a.no_python else 'without'} Python, {a.icon} icon)")
+    try:                   # only files kept in git: a local helper or test script never gets into the zip
+        tracked = set(subprocess.run(["git", "ls-files"], cwd=HERE, capture_output=True, text=True,
+                                     check=True).stdout.splitlines())
+    except (OSError, subprocess.CalledProcessError):
+        tracked = None
+
     for pat in APP_FILES + ICONS[a.icon]:
         for f in sorted(os.listdir(HERE)):
-            if fnmatch.fnmatch(f, pat) and f not in NOT_SHIPPED and os.path.isfile(os.path.join(HERE, f)):
+            if fnmatch.fnmatch(f, pat) and f not in NOT_SHIPPED and os.path.isfile(os.path.join(HERE, f)) \
+                    and (tracked is None or f in tracked):
                 shutil.copy2(os.path.join(HERE, f), out)
     ico = os.path.join(out, "tailor.ico")      # always: users can put it on a shortcut to the .bat
     if a.icon == "custom":

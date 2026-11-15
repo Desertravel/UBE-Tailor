@@ -1,6 +1,6 @@
 # UBE Tailor
 
-**by Desertravel** · version 0.9.2-beta
+**by Desertravel** · version 0.9.3-beta
 
 Your 3BA / CBBE outfits, made for the **UBE 2.0** body. UBE Tailor turns them into real UBE BodySlide projects -
 the outfit is fitted to the UBE shape, gets every UBE body slider and UBE's bone weights - plus one small plugin,
@@ -34,11 +34,14 @@ for anything missing, opens the official page - **it never downloads anything by
 
 ## Install
 1. Unpack the zip anywhere outside the game folder, for example `D:\Modding\UBE Tailor`.
-2. Optional: add it to MO2's executables - Binary: `python\pythonw.exe` in the UBE Tailor folder, Arguments:
-   `-s -E tailor_gui.py`, Start in: the UBE Tailor folder. It also works when started on its own.
+2. **Add it to MO2 (important):** in MO2 click the gears icon (*Modify Executables*), **+**, *Add from file*, and
+   pick `python\pythonw.exe` in the UBE Tailor folder. Title: `UBE Tailor`, Arguments: `-s -E tailor_gui.py`,
+   Start in: the UBE Tailor folder. Always start the Tailor from MO2: then it and BodySlide see all your mods.
 
 ## Use
-1. **Start `UBE Tailor.exe`** (0.9.0) or **`UBE Tailor.bat`** (0.9.1 and newer) and pick your MO2 folder (the one with `ModOrganizer.exe` / `ModOrganizer.ini`).
+**Picture guide:** [How to use UBE Tailor](docs/how-to-use-ube-tailor.png) - every step in one picture.
+
+1. **Start UBE Tailor from MO2** and pick your MO2 folder (the one with `ModOrganizer.exe` / `ModOrganizer.ini`).
 2. **Requirements**: install what the screen shows as missing, press *Check again*.
 3. Pick your **UBE preset** (top right) - the one you build your UBE body with.
 4. Tick outfits and press **Convert selected**. Pieces of the same outfit come along on their own.

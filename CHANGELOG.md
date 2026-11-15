@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.3-beta (2026-11-15)
 - **No more hole at the crotch under bras and bikini tops.** The vulva of the UBE body is its partition 53, and the
   game draws that part of a mesh only when the armor addon is on slot 53, so UBE puts every body armor on 32 + 53.
   The Tailor left 53 off the body pieces of any outfit that has its own slot-53 piece (stockings, cuisses), to keep
