@@ -44,6 +44,7 @@ OSD_MAGIC = b"\x00DSO"   # BodySlide writes the uint32 'OSD\0' little-endian
 HEEL = "HiHeelz_CBBE"
 MIN_GAP, CLIP_BAND = 0.1, 1.5   # anti-clip: keep outfits >= MIN_GAP outside UBE; ignore deeper than CLIP_BAND
 ZAP_SURFACE = 0.5   # feet/hands: hide UBE verts farther than this from the old part's surface
+CROTCH_CUT = 0.5    # the UBE crotch (partition 53) is hidden only when the author cut away more than this share of it
 HEAD_SLOTS = {30, 31, 41, 42, 43, 130, 131, 141, 142, 143}   # always head pieces: never converted
 # 44 face, 45 neck, 47 back, 55 face (alt): many mods put body pieces here too (chest plates, pauldrons, leg
 # armor, loincloths), so these are judged by the mesh: only a piece that stays above the neck is skipped.
@@ -95,6 +96,12 @@ class Ref:
         self.shape = s.name
         self.verts = np.array(s.verts, dtype=np.float64)
         self.tris = np.array(s.tris, dtype=np.int64)
+        # the crotch with the vulva (partition 53 of the UBE body): 3BA has no vulva, so its points lie away from
+        # an old 3BA body and the zap below would cut them out of every body piece (keep_crotch)
+        self.crotch = np.zeros(len(self.verts), bool)
+        ids = [p.id for p in (s.partitions or [])]
+        if 53 in ids and len(s.partition_tris) == len(self.tris):
+            self.crotch[self.tris[np.array(s.partition_tris) == ids.index(53)].ravel()] = True
         root = ET.parse(osp).getroot()
         ss = next((s for s in root.iter("SliderSet") if (s.findtext("DataFolder") or "").strip() == self.folder),
                   root.find("SliderSet"))
@@ -103,6 +110,21 @@ class Ref:
             d = sl.find("Data")
             self.sliders[sl.get("name")] = (dict(sl.attrib), d.get("name") if d is not None else None)
         self.osd = read_osd(osd, len(self.verts))
+
+
+def keep_crotch(hide, r):
+    """Hidden UBE body points without the crotch (partition 53), unless the author cut most of it away.
+    The UBE vulva lies deeper than the smooth 3BA crotch, so "farther than 1.2 from the old body" took it out of
+    every body piece (bikini tops, dresses: the vulva vanished as soon as one was worn, TNG or not). The game
+    hides partition 53 by itself when something is worn on slot 53, like on the naked UBE body."""
+    c = getattr(r, "crotch", None)
+    if c is None or not c.any() or not len(hide):
+        return hide
+    h = np.zeros(len(c), bool)
+    h[hide] = True
+    if (h & c).sum() > CROTCH_CUT * c.sum():
+        return hide
+    return np.nonzero(h & ~c)[0]
 
 
 def load_refs():
@@ -341,7 +363,7 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
             hide = np.nonzero(ds > ZAP_SURFACE)[0]
         elif len(Ec):
             dist, _ = knn(Ec, ref_verts[r.shape])
-            hide = np.nonzero(dist[:, 0] > 1.2)[0]
+            hide = keep_crotch(np.nonzero(dist[:, 0] > 1.2)[0], r)
         else:
             hide = np.arange(len(r.verts))
         hidden[r.shape] = (len(hide), len(r.verts))

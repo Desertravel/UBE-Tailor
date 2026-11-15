@@ -451,6 +451,10 @@ class App:
     # ------------------------------------------------------------ actions
     def do_scan(self):
         def work():
+            try:
+                tc.restore_crotch(log=self.say)        # once per piece: projects made before 0.9.3 cut the vulva
+            except Exception as e:
+                self.say(f"Could not check the converted pieces' crotch: {e}")
             if not tc.running("SkyrimSE.exe"):
                 self.say("Updating the patches to the meshes BodySlide has built...")
                 for line in tc.repoint(False).strip().splitlines()[-2:]:

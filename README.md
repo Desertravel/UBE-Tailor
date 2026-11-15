@@ -85,7 +85,7 @@ Everything in the download is built from this source:
 - Without the download: `py -3.12 -m pip install numpy scipy`, add PyNifly as above, then `py -3.12 tailor_gui.py`.
 
 ## Not supported yet
-Single-weight meshes (no `_0` / `_1`), Skyrim LE meshes (port them to SE first), localized plugins, other games.
+Localized plugins, other games.
 
 ## Credits and license
 UBE Tailor is free software under the **GNU GPL v3 or later** ([LICENSE](LICENSE)) - Copyright (C) 2026 Desertravel.

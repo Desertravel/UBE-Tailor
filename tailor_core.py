@@ -1020,6 +1020,51 @@ def crotch_cover(sets):
     return out
 
 
+def restore_crotch(log=print):
+    """Pieces converted before 0.9.3 had the UBE vulva cut out of their body (make_projects.keep_crotch): take the
+    crotch points out of the hidden-body zap of their projects (.osd, and .osd.orig of Fix clipping), once per piece.
+    Only the zap changes; BodySlide Batch Build makes the meshes. Returns how many projects changed."""
+    db = load_db()
+    todo = [s for s, d in db.items() if isinstance(d, dict) and not d.get("crotch_zap")
+            and os.path.isfile(os.path.join(mp.BS, "SliderSets", mp.safe(s) + ".osp"))]
+    if not todo:
+        return 0
+    body = next((r for r in mp.load_refs() if r.key == "body"), None)
+    if body is None or not body.crotch.any():
+        return 0
+    entry, changed = body.shape + mp.ZAP, 0
+    for s in todo:
+        try:
+            ss = ET.parse(os.path.join(mp.BS, "SliderSets", mp.safe(s) + ".osp")).getroot().find("SliderSet")
+            osd = os.path.join(mp.BS, "ShapeData", ss.findtext("DataFolder"), ss.findtext("SourceFile")[:-4] + ".osd")
+            hit = False
+            for path in (osd, osd + ".orig"):
+                if not os.path.isfile(path):
+                    continue
+                data = _osd_sparse(path)
+                if entry not in data:
+                    continue
+                idx, dd = data[entry]
+                keep = mp.keep_crotch(idx, body)
+                if len(keep) == len(idx):
+                    continue
+                k = np.isin(idx, keep)
+                data[entry] = (idx[k], dd[k])
+                tmp = path + ".tmp"
+                mp.write_osd(tmp, [(n, i, d) for n, (i, d) in data.items()])
+                os.replace(tmp, path)
+                hit = True
+            changed += hit
+            db[s]["crotch_zap"] = 1
+        except Exception as e:
+            log(f"   {s}: {e}")
+    save_db(db)
+    if changed:
+        log(f"Restored the vulva in {changed} converted piece(s) (it was cut out of their body). "
+            f"Run Batch Build in BodySlide again.")
+    return changed
+
+
 def motion_check(set_name, refs):
     """How the outfit follows the body when it moves (walking, combat, sitting): every outfit point lying on the
     body is compared with the UBE body's bone weights under it. A point weighted to other bones separates from or

@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- **The vulva no longer vanishes under bikini tops, bras, dresses and other body pieces.** Converting cut it out of
+  the UBE body inside every piece on slot 32: UBE's vulva lies deeper than the smooth 3BA crotch, and the Tailor
+  hid every UBE body point farther than 1.2 from the old 3BA body. The crotch (partition 53 of the UBE body) is
+  now kept unless the author cut most of it away (long skirts, pants: 180 pieces on the test list). Pieces you
+  converted before are repaired by themselves at the next Scan (only the hidden-body data of their project changes,
+  once per piece; 702 of 882 body pieces on the test list): run Batch Build in BodySlide afterwards.
 - **Fix clipping (experimental):** a new button. Pick the body presets you play with (all are ticked - keep it that
   way: fixing for a few makes the others worse) and the Tailor changes how the ticked converted pieces (or all of
   them) follow the body sliders, so they stay outside the UBE body at every one of those presets. The shape at rest
