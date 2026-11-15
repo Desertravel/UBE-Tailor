@@ -1,6 +1,24 @@
 # Changelog
 
 ## Unreleased
+- **TNG no longer hides the vulva under bikini tops and bras.** TNG (The New Gentleman) covers the genitals for every
+  armor on slot 32 unless it is told the armor is revealing, so even with the vulva kept in the body (below) it
+  vanished as soon as a bikini top was worn. The Tailor now writes `SKSE\Plugins\UBE Tailor_TNG.ini` in its output
+  mod with every patch build: each converted body armor with nothing of its own in front of the vulva (rays from
+  the UBE vulva, 30 units: skirts and plate count as covering) is listed as `RevealingRecord`, the way bikini armor
+  mods ship their own TNG files. On the test list 838 of 1758 body armors (bikinis, lingerie, the revealing outfit
+  mods). Settings key `tng_revealing` (default on); start the game again after the Scan.
+- **Loose parts follow their own body part** (new conversions): an outfit point weighted to other bones than the
+  body under it - a wide sleeve hanging next to the thigh, a cape over the back - takes its slider data from the
+  nearest body points of its own bones, so the sleeve follows the arm instead of growing with the thigh (like
+  hand-made conversions do). Only where it can never sink into the body: per point, everything the nearest body
+  points would push it out by must fit in its gap from the body, otherwise it keeps the old behaviour. Test (40
+  loose pieces: dresses, robes, cloaks, capes, hair; 4 presets): points inside 176 -> 176, 30 pieces use it.
+- **Outfit adjust sliders** (new conversions): every converted piece gets the `*_ForOutfits` sliders of UBE outfits
+  (BiggerBody, BiggerBreasts, BiggerBelly, BiggerButt, BiggerHips, BiggerThighs, BiggerCalves, BiggerFeet,
+  BiggerUpperTorso, BiggerUpperSpine, BiggerLowerSpine, BiggerUpperarms, BiggerWrists, BiggerHands). They are 0 by
+  default, so nothing changes; raise one in BodySlide to give a clipping area more room. Areas and amounts measured
+  from the outfit projects of UBE mods (297). Pieces converted before get them when converted again.
 - **The vulva no longer vanishes under bikini tops, bras, dresses and other body pieces.** Converting cut it out of
   the UBE body inside every piece on slot 32: UBE's vulva lies deeper than the smooth 3BA crotch, and the Tailor
   hid every UBE body point farther than 1.2 from the old 3BA body. The crotch (partition 53 of the UBE body) is

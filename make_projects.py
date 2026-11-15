@@ -127,6 +127,167 @@ def keep_crotch(hide, r):
     return np.nonzero(h & ~c)[0]
 
 
+# Outfit adjust sliders of UBE outfits ("BiggerBody_ForOutfits" ...): all at 0 by default, so nothing changes until
+# the player raises one in BodySlide to give a clipping area more room. Each pushes the outfit out along the body
+# normal under it, in its own area (from the UBE body's bone weights), by the amount at 100. Areas and amounts as in
+# the outfit projects of UBE mods (297 projects measured).
+FRONT, BACK, SIDE = "front", "back", "side"
+FOR_OUTFITS = [  # (slider, bone name parts, facing, push at 100)
+    ("BiggerBody_ForOutfits", None, None, 0.55),
+    ("BiggerUpperTorso_ForOutfits", ("Spine2", "Clavicle", "Breast"), None, 0.35),
+    ("BiggerBreasts_ForOutfits", ("Breast",), None, 1.35),
+    ("BiggerUpperarms_ForOutfits", ("UpperArm", "UpperarmTwist"), None, 0.65),
+    ("BiggerWrists_ForOutfits", ("Forearm",), None, 0.65),
+    ("BiggerHands_ForOutfits", ("Hand", "Finger"), None, 0.7),
+    ("BiggerBelly_ForOutfits", ("Spine [", "Spine1", "Belly", "Pelvis"), FRONT, 0.8),
+    ("BiggerUpperSpine_ForOutfits", ("Spine2", "Clavicle"), BACK, 0.7),
+    ("BiggerLowerSpine_ForOutfits", ("Spine [", "Spine1", "Pelvis"), BACK, 0.55),
+    ("BiggerHips_ForOutfits", ("Pelvis", "Thigh"), SIDE, 0.45),
+    ("BiggerButt_ForOutfits", ("Butt",), None, 0.4),
+    ("BiggerThighs_ForOutfits", ("Thigh",), None, 0.75),
+    ("BiggerCalves_ForOutfits", ("Calf",), None, 0.75),
+    ("BiggerFeet_ForOutfits", ("Foot", "Toe"), None, 0.8),
+]
+FOLLOW_MATCH = 0.6   # outfit points whose bones match the body under them less than this follow their own bones' body
+
+
+def _vertex_normals(V, F):
+    FN = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
+    N = np.zeros_like(V)
+    for k in range(3):
+        np.add.at(N, F[:, k], FN)
+    return N / (np.linalg.norm(N, axis=1, keepdims=True) + 1e-12)
+
+
+def outfit_areas(refs, U, BW, bones):
+    """{slider: (area 0..1 per UBE point, push at 100)} and the UBE normals (body, feet, hands stacked like U)."""
+    N, off = [], 0
+    for r in refs:
+        n = len(r.verts)
+        N.append(_vertex_normals(U[off:off + n], r.tris))
+        off += n
+    N = np.vstack(N)
+    front = np.clip((N[:, 1] + 0.25) / 0.5, 0, 1)             # the body faces +Y
+    face = {FRONT: front, BACK: 1 - front, SIDE: np.clip((np.abs(N[:, 0]) - 0.35) / 0.35, 0, 1)}
+    out = {}
+    for name, parts, facing, push in FOR_OUTFITS:
+        if parts is None:
+            a = np.ones(len(U))
+        else:
+            cols = [i for i, b in enumerate(bones) if any(p in b for p in parts)]
+            a = BW[:, cols].sum(1) if cols else np.zeros(len(U))
+            a = np.clip(a / max(np.percentile(a[a > 0], 95) if (a > 0).any() else 1, 1e-6), 0, 1)
+        if facing:
+            a = a * face[facing]
+        out[name] = (a, push)
+    return out, N
+
+
+def outfit_bones(nif_path, names, bones):
+    """{shape: (verts, len(bones)) weights of the outfit points over the UBE body's bones}. A bone the body does not
+    have (HDT-SMP, cloth) counts as its nearest ancestor the body has; points with none get an empty row."""
+    nif = NifFile(nif_path)
+    col = {b: i for i, b in enumerate(bones)}
+    out = {}
+    for s in nif.shapes:
+        if s.name not in names:
+            continue
+        W = np.zeros((len(s.verts), len(bones)))
+        for b, lst in s.bone_weights.items():
+            a, seen = b, 0
+            while a is not None and a not in col and seen < 64:
+                node = nif.nodes.get(a)
+                a = node.parent.name if node is not None and node.parent is not None else None
+                seen += 1
+            if a in col:
+                for vi, w in lst:
+                    W[vi, col[a]] += w
+        sw = W.sum(1, keepdims=True)
+        out[s.name] = np.divide(W, sw, out=np.zeros_like(W), where=sw > 0)
+    return out
+
+
+class Follow:
+    """Which UBE points an outfit point takes its slider data from. Normally its K nearest (Outfit Studio
+    "Conform"). A point weighted to other bones than the body under it - a hanging sleeve or skirt panel next to
+    the thigh, hair over the back - takes it from the nearest body points of its own bones instead, so a sleeve
+    follows the arm, not the thigh it hangs next to (like the hand-made conversions). It never sinks in more than
+    with the nearest points: where they would push it out along the body normal by more than the room it has
+    from the body (its gap at rest), it is pushed out by the rest."""
+
+    def __init__(self, U, P, BW, Wo, UN, room=None):
+        d, I = knn(U, P, K)
+        w = 1.0 / (d ** 2 + 1e-4)
+        self.I, self.w = I, w / w.sum(1, keepdims=True)
+        n = (UN[I] * self.w[..., None]).sum(1)
+        self.n = n / (np.linalg.norm(n, axis=1, keepdims=True) + 1e-12)
+        self.room = np.zeros(len(P)) if room is None else room
+        self.alpha, self.parts = np.zeros(len(P)), []
+        if Wo is None or not len(P):
+            return
+        has = Wo.sum(1) > 0
+        match = (self.w * np.minimum(Wo[:, None, :], BW[I]).sum(2)).sum(1)
+        self.alpha = np.where(has, np.clip((FOLLOW_MATCH - match) / 0.3, 0, 1), 0.0)
+        bad = np.nonzero(self.alpha > 0)[0]
+        if not len(bad):
+            return
+        for b in np.nonzero((Wo[bad] > 0.05).any(0))[0]:
+            sub = np.nonzero(BW[:, b] >= 0.2)[0]
+            rows = bad[Wo[bad, b] > 0.05]
+            if len(sub) < K or not len(rows):
+                continue
+            db, Ib = knn(U[sub], P[rows], K)
+            wb = 1.0 / (db ** 2 + 1e-4)
+            self.parts.append((rows, Wo[rows, b], sub[Ib], wb / wb.sum(1, keepdims=True)))
+        tot = np.zeros(len(P))
+        for rows, share, _I, _w in self.parts:
+            tot[rows] += share
+        self.tot = tot
+
+    def probe(self, D):
+        """First pass over the body sliders: add up how far the nearest points would push each point out beyond
+        what its own bones' points do. settle() then keeps the own-bone follow only where all of that together
+        still fits in the room the point has from the body, so no combination of sliders makes it sink in."""
+        if not self.parts:
+            return
+        if not hasattr(self, "acc"):
+            self.acc = np.zeros(len(self.alpha))
+        out, res = self._mix(D)
+        self.acc += np.maximum(((out - res) * self.n).sum(1), 0)
+
+    def settle(self):
+        if self.parts and hasattr(self, "acc"):
+            self.alpha[self.acc > 2 * self.room] = 0.0
+
+    def _mix(self, D):
+        out = (D[self.I] * self.w[..., None]).sum(1)
+        own = np.zeros_like(out)
+        for rows, share, I, w in self.parts:
+            own[rows] += share[:, None] * (D[I] * w[..., None]).sum(1)
+        t = self.tot[:, None]
+        own = np.divide(own, t, out=np.array(out), where=t > 0)
+        a = self.alpha[:, None]
+        return out, (1 - a) * out + a * own
+
+    def __call__(self, D):
+        """D (one value or vector per UBE point) at the outfit points."""
+        out = (D[self.I] * self.w[..., None]).sum(1) if D.ndim == 2 else (D[self.I] * self.w).sum(1)
+        if not self.parts:
+            return out
+        own = np.zeros_like(out)
+        for rows, share, I, w in self.parts:
+            v = (D[I] * w[..., None]).sum(1) if D.ndim == 2 else (D[I] * w).sum(1)
+            own[rows] += (share[:, None] * v) if D.ndim == 2 else share * v
+        t = self.tot if D.ndim == 1 else self.tot[:, None]
+        own = np.divide(own, t, out=np.array(out), where=t > 0)
+        a = self.alpha if D.ndim == 1 else self.alpha[:, None]
+        res = (1 - a) * out + a * own
+        if D.ndim == 2:
+            lack = ((out - res) * self.n).sum(1)
+            res += np.maximum(lack - self.room, 0)[:, None] * self.n
+        return res
+
+
 def load_refs():
     return [Ref(*p) for p in ube_field.parts()]
 
@@ -378,11 +539,44 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
             sliders.setdefault(name, attrs)
     U = np.vstack([Vh if Vh is not None and r is feet else r.verts for r in refs])
     outfit = [s["name"] for s in shapes if s["name"] not in bodies]
-    near = {}
-    for n in outfit:
-        d, I = knn(U, conformed[n], K)
-        w = 1.0 / (d ** 2 + 1e-4)
-        near[n] = (I, w / w.sum(1, keepdims=True))
+    bones, BW, _stb, _node = ube_weights.ref_weights(refs)
+    try:
+        Wo = outfit_bones(nif_path, set(outfit), bones)
+    except Exception as e:                       # never fail a conversion over this: plain nearest points
+        log(f"   follow: bone weights not read ({e})")
+        Wo = {}
+    areas, UN = outfit_areas(refs, U, BW, bones)
+    SVr, SFr, off = [], [], 0
+    for r, Vr in zip(refs, np.split(U, np.cumsum([len(r.verts) for r in refs])[:-1])):
+        SVr.append(Vr); SFr.append(r.tris + off); off += len(Vr)
+    SVr, SFr = np.vstack(SVr), np.vstack(SFr)
+    SNr = np.cross(SVr[SFr[:, 1]] - SVr[SFr[:, 0]], SVr[SFr[:, 2]] - SVr[SFr[:, 0]])
+    SNr /= np.linalg.norm(SNr, axis=1, keepdims=True) + 1e-12
+
+    def room(P):
+        """Room each outfit point has from the UBE body at rest (half its gap; 0 inside or where unclear)."""
+        tri, bary, dist = ube_field.project(P, SVr, SFr)
+        q = ube_field.interp(SVr, SFr, tri, bary)
+        dot = ((P - q) * SNr[tri]).sum(1)
+        ok = (dot > 0) & (np.abs(dot) >= 0.6 * dist)
+        return np.where(ok, np.maximum(dist - MIN_GAP, 0) * 0.5, 0.0)
+    near = {n: Follow(U, conformed[n], BW, Wo.get(n), UN, room(conformed[n])) for n in outfit}
+    for name, attrs in sliders.items():                 # first pass: where own-bone follow is safe (Follow.probe)
+        if attrs.get("uv") == "true" or attrs.get("zap") == "true" or (Vh is not None and name == HEEL):
+            continue
+        parts = []
+        for r in refs:
+            dn = r.sliders.get(name, (None, None))[1]
+            parts.append(r.osd[dn] if dn and dn in r.osd else np.zeros_like(r.verts))
+        D = np.vstack(parts)
+        if np.abs(D).max() > 0:
+            for f in near.values():
+                f.probe(D)
+    for f in near.values():
+        f.settle()
+    own = sum(int((f.alpha > 0).sum()) for f in near.values())
+    for name, _a in areas.items():
+        sliders.setdefault(name, {"name": name, "invert": "false", "small": "0", "big": "0"})
     data_for = {}
     for name, attrs in sliders.items():
         rows = []
@@ -392,7 +586,17 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
         for r in use:
             if name in r.sliders and r.sliders[name][1]:
                 rows.append((r.sliders[name][1], r.shape, r.folder + ".osd"))
-        if attrs.get("uv") != "true" and attrs.get("zap") != "true":
+        if name in areas and not any(name in r.sliders for r in refs):
+            area, push = areas[name]
+            for n in outfit:
+                nn = near[n](UN)
+                nn /= np.linalg.norm(nn, axis=1, keepdims=True) + 1e-12
+                diff = push * near[n](area)[:, None] * nn
+                keep = np.nonzero(np.abs(diff).max(1) > 1e-3)[0]
+                if len(keep):
+                    entries.append((n + name, keep, diff[keep]))
+                    rows.append((n + name, n, None))
+        elif attrs.get("uv") != "true" and attrs.get("zap") != "true":
             parts = []
             for r in refs:
                 dn = r.sliders.get(name, (None, None))[1]
@@ -400,8 +604,7 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
             D = np.vstack(parts)
             if np.abs(D).max() > 0:
                 for n in outfit:
-                    I, w = near[n]
-                    diff = (D[I] * w[..., None]).sum(1)
+                    diff = near[n](D)
                     mag = np.abs(diff).max(1)
                     keep = np.nonzero(mag > 1e-5)[0]
                     if len(keep) and mag.max() > 1e-3:
@@ -451,7 +654,7 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
     n_tr = sum(1 for rows in data_for.values() for r in rows if r[2] is None)
     fit = None if field.body_fit is None else round(float(field.body_fit.mean()), 3)
     log(f"== {set_name}: shapes {len(shapes)} (old body {sorted(bodies)}), UBE parts {[r.key for r in use]}, "
-        f"hidden {hidden}, slider data {n_tr}, body fit {fit}, pushed out {pushed}"
+        f"hidden {hidden}, slider data {n_tr}, body fit {fit}, pushed out {pushed}, own-bone follow {own}"
         + (", PORTED from Skyrim LE to SE" if ported else "")
         + (f", FLAT FEET (heel-posed foot part pulled onto the flat foot, heel {flat[2]})" if flat is not None else "") + (f", HEELS (feet fit {heel_fit})" if Vh is not None and heel_fit is not None else ", HEELS (outfit pose)" if Vh is not None else ""))
     return set_name

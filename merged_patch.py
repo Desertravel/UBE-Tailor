@@ -319,6 +319,64 @@ def smart_slots(e, armo_data, converted):
     return out
 
 
+def tng_revealing(e, armo_data, converted):
+    """Armor object ids of this mod to list as revealing for TNG (The New Gentleman). TNG covers the genitals for
+    every armor on slot 32 unless it is told the armor is revealing, so with TNG the UBE vulva vanished under a
+    bikini top or a bra just like under a dress. A converted body piece with nothing of its own in front of the
+    vulva (tc.crotch_cover up to CROTCH_SEEN away: a skirt or plate counts) is revealing; an armor is when all its
+    converted body pieces are."""
+    if not env.S.get("tng_revealing", True):
+        return []
+    n = len(e["ms"])
+    armas = {fid & 0xFFFFFF: d for sig, fid, d, _fl in e["recs"] if sig == b"ARMA" and fid >> 24 >= n}
+    body = {}
+    for armo_obj, arma_objs in e["todo"]:
+        if not _bod(armo_data[armo_obj]) & 4:
+            continue
+        names = []
+        for a in arma_objs:
+            if not _bod(armas[a]) & 4:
+                continue
+            m3 = tc.mesh_path(next((zstr(x) for t, x in subrecords(armas[a]) if t == b"MOD3"), ""))
+            if m3.lower() in converted:
+                names.append(tc.set_name_of(re.sub(r"(?i)_[01]\.nif$", "", m3)))
+        if names:
+            body[armo_obj] = names
+    if not body:
+        return []
+    cov = tc.crotch_cover(sorted({x for v in body.values() for x in v}), tc.CROTCH_SEEN, "crotch_seen")
+    return sorted(o for o, names in body.items() if all(x in cov and cov[x] < CROTCH_MIN for x in names))
+
+
+TNG_INI = os.path.join("SKSE", "Plugins", "UBE Tailor_TNG.ini")
+
+
+def write_tng_ini(records, log=print):
+    """SKSE/Plugins/UBE Tailor_TNG.ini in the output mod: the revealing armors for TNG (tng_revealing), as
+    "0x<id>~<plugin>" like the TNG files of bikini armor mods. Removed when there are none."""
+    path = os.path.join(mp.MOD, TNG_INI)
+    if not records:
+        if os.path.isfile(path):
+            os.remove(path)
+        return
+    lines = [";Made by UBE Tailor - rewritten with every patch build, do not edit.",
+             ";Converted body pieces (bikini tops, bras, open dresses...) whose fabric does not cover the vulva:",
+             ";without this TNG covers the genitals for them like for a full dress.", "", "[Armor]"]
+    lines += [f"RevealingRecord = 0x{o:X}~{plugin}" for plugin, o in records]
+    text = "\r\n".join(lines) + "\r\n"
+    try:
+        with open(path, encoding="utf-8", newline="") as f:
+            if f.read() == text:
+                return
+    except OSError:
+        pass
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".tmp", "w", encoding="utf-8", newline="") as f:
+        f.write(text)
+    os.replace(path + ".tmp", path)
+    log(f"   TNG: {len(records)} body piece(s) that do not cover the vulva marked revealing ({TNG_INI})")
+
+
 # ---------------------------------------------------------------- records of one outfit mod
 def mod_records(e, index, new_i, ids, ui, target, extra, converted):
     """(armo bytes, arma bytes, armo count, arma count) for one source plugin. Armors are copied from their winning
@@ -509,7 +567,7 @@ def build(add=(), exclude=(), log=print, add_foreign=()):
     target, extra = tc.ube_races()
     converted = repoint_armas.converted_set()
 
-    entries, W, n_win, n_strip = [], None, 0, 0
+    entries, W, n_win, n_strip, reveal = [], None, 0, 0, []
     for name in order:
         low = name.lower()
         if low not in enabled or low not in loc:
@@ -542,6 +600,8 @@ def build(add=(), exclude=(), log=print, add_foreign=()):
         e = dict(name=name, path=path, ms=ms, recs=recs, todo=todo, masters=names, win=win, awin=awin,
                  n_arma=len({a for _o, al in todo for a in al}))
         e["strip"] = smart_slots(e, {o: win[o][2] if o in win else src_armo[o] for o, _al in todo}, converted)
+        reveal += [(name, o) for o in tng_revealing(e, {o: win[o][2] if o in win else src_armo[o] for o, _al in todo},
+                                                     converted)]
         stripped = e["strip"]["arma"]
         for wname, wms, d, _fl in [win[o] for o in win] + [awin[a] for a in awin if a in stripped]:
             names.update({m.lower(): m for m in used_masters(wname, wms, d)})
@@ -644,6 +704,7 @@ def build(add=(), exclude=(), log=print, add_foreign=()):
         os.replace(out + ".tmp", out)
         result.append((fname, len(group), n_armo, n_arma, len(masters)))
 
+    write_tng_ini(reveal, log)
     keep = {r[0].lower() for r in result}
     for f in merged_files():
         if f.lower() not in keep:                       # no longer needed (fewer files than before)

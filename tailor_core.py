@@ -942,6 +942,7 @@ def slot_cover(sets):
 
 
 CROTCH_RAY = 4.0         # how far out from the vulva fabric still counts as covering it
+CROTCH_SEEN = 30.0       # ... and anything at all in front of it (skirts, plate): hidden from view (TNG revealing)
 
 
 def _crotch_rays(refs):
@@ -959,8 +960,8 @@ def _crotch_rays(refs):
     return B[sel] + 0.05 * D, D
 
 
-def _crotch_one(set_name, ref_names, O, D):
-    """Share of the vulva rays that hit the piece's own visible shapes within CROTCH_RAY (Moller-Trumbore)."""
+def _crotch_one(set_name, ref_names, O, D, ray=CROTCH_RAY):
+    """Share of the vulva rays that hit the piece's own visible shapes within ray (Moller-Trumbore)."""
     ss = ET.parse(os.path.join(mp.BS, "SliderSets", mp.safe(set_name) + ".osp")).getroot().find("SliderSet")
     nif = NifFile(os.path.join(mp.BS, "ShapeData", ss.findtext("DataFolder"), ss.findtext("SourceFile")))
     zapped = {d.get("target") for sl in ss.findall("Slider") if sl.get("zap") == "true" for d in sl.findall("Data")}
@@ -975,7 +976,7 @@ def _crotch_one(set_name, ref_names, O, D):
     if not Vs or not len(O):
         return 0.0
     V, F = np.vstack(Vs), np.vstack(Fs)
-    F = F[np.linalg.norm(V[F].mean(1) - O.mean(0), axis=1) < CROTCH_RAY + 4]
+    F = F[np.linalg.norm(V[F].mean(1) - O.mean(0), axis=1) < ray + 4]
     if not len(F):
         return 0.0
     a = V[F[:, 0]]
@@ -991,18 +992,18 @@ def _crotch_one(set_name, ref_names, O, D):
         q = np.cross(s, e1)
         v = (q * d).sum(1) * inv
         t = (e2 * q).sum(1) * inv
-        hit += bool(np.any(ok & (u >= 0) & (v >= 0) & (u + v <= 1) & (t > 0) & (t < CROTCH_RAY)))
+        hit += bool(np.any(ok & (u >= 0) & (v >= 0) & (u + v <= 1) & (t > 0) & (t < ray)))
     return hit / len(O)
 
 
-def crotch_cover(sets):
+def crotch_cover(sets, ray=CROTCH_RAY, key="crotch"):
     """{set: share 0..1} for converted pieces: how much of the UBE vulva the piece's fabric hides when seen from
     outside (merged_patch.smart_slots: UBE and TNG hide the vulva for anything worn on slot 52 / 53, so a garter,
     a belt or crotchless panties on those slots made it vanish). Kept in the database; a new conversion clears it."""
     db = load_db()
     out, todo = {}, []
     for s in sets:
-        c = db.get(s, {}).get("crotch")
+        c = db.get(s, {}).get(key)
         if c is not None:
             out[s] = c
         elif s in db and os.path.isfile(os.path.join(mp.BS, "SliderSets", mp.safe(s) + ".osp")):
@@ -1013,7 +1014,7 @@ def crotch_cover(sets):
         O, D = _crotch_rays(refs)
         for s in todo:
             try:
-                db[s]["crotch"] = out[s] = round(_crotch_one(s, ref_names, O, D), 3)
+                db[s][key] = out[s] = round(_crotch_one(s, ref_names, O, D, ray), 3)
             except Exception:
                 continue
         save_db(db)
