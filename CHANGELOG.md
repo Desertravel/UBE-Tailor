@@ -1,6 +1,14 @@
 # Changelog
 
 ## Unreleased
+- **No more hole at the crotch under bras and bikini tops.** The vulva of the UBE body is its partition 53, and the
+  game draws that part of a mesh only when the armor addon is on slot 53, so UBE puts every body armor on 32 + 53.
+  The Tailor left 53 off the body pieces of any outfit that has its own slot-53 piece (stockings, cuisses), to keep
+  the two from sharing the slot, but it looked at the outfit's original slots: smart slots had already moved those
+  pieces to 54. So more than half of the converted body pieces (828 of 1488 on the test list, e.g. [COCO]
+  Witchiness bras, TEWOBA bikini tops) were on 32 only and showed a hole where the vulva is. Now every body piece
+  gets 53, like UBE's own conversions, and a piece of the same outfit still on 53 (closed panties, tights) moves to
+  54. Fixed at the next Scan (patch rebuild); no conversion or BodySlide build needed.
 - **Colour variants of converted outfits show on the right parts again.** Many outfits make their colour versions
   with alternate textures on the armor addon (white / black / gold sets of [COCO] Mysterious Mage, Caenarvon,
   ralfeta panties...). The game finds the part by its index in the mesh, and a converted mesh lists its parts in

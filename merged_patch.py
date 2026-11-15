@@ -381,6 +381,16 @@ def smart_slots(e, armo_data, converted):
     for a, (bits, name) in crotch.items():
         if name in ccov and ccov[name] < CROTCH_MIN:
             out["arma"][a] = out["arma"].get(a, 0) | sum(CROTCH[s] for s in bits)
+    # Every UBE body armor sits on 32 + 53, like UBE's naked body (mod_records): the vulva is partition 53 of the
+    # UBE body each converted body piece carries, and the game does not draw it when the piece is not on 53.
+    # A piece of the same outfit still on 53 (it covers the vulva: closed panties, pantyhose) would share that slot
+    # with the body pieces and only one of the two meshes would show, so it moves off 53 as well.
+    if any(_bod(armas[a]) & 4 for _o, al in e["todo"] for a in al):
+        for _o, al in e["todo"]:
+            for a in al:
+                bod = _bod(armas[a])
+                if not bod & 4 and bod & CROTCH[53]:
+                    out["arma"][a] = out["arma"].get(a, 0) | CROTCH[53]
     for a, mask in out["arma"].items():
         if not _bod(armas[a]) & ~mask & 0xFFFFFFFF:  # it must keep some slot to be shown at all: leg pieces
             out["arma_add"][a] = FREE_LEG if mask & CROTCH[53] else FREE_SLOT    # 53 -> 54, the rest -> 60
@@ -482,10 +492,17 @@ def mod_records(e, index, new_i, ids, ui, target, extra, converted):
     amask = e.get("strip", {}).get("arma", {})          # armor addon -> slot bits to remove
     sadd = e.get("strip", {}).get("armo_add", {})       # ... and the free slot to add when none is left
     aadd = e.get("strip", {}).get("arma_add", {})
-    # UBE's naked body sits on 32 + 53, so body pieces normally get 53 too. But when the outfit has its own slot-53
-    # piece (pants, leggings), two pieces worn together would share slot 53 and the game hides one of them.
-    own53 = any(next((struct.unpack_from("<I", x)[0] for t, x in subrecords(d) if t in (b"BOD2", b"BODT")), 0) & 1 << 23
-                for sig, fid, d, _fl in e["recs"] if fid >> 24 >= n)
+    # UBE's naked body and UBE's own body armors sit on 32 + 53, so body pieces get 53 too: partition 53 of the UBE
+    # body in the mesh (the vulva) is not drawn when the piece is not on 53 - a hole under every bra / bikini top.
+    # Only when a piece of the outfit itself stays on 53 (smart slots off) do the body pieces go without it: two
+    # meshes on one slot and the game shows only one of them. Counted with the slots the copies really get (smart
+    # slots move garters, stockings, cuisses... from 53 to 54), never from the original records alone; an addon no
+    # armor of the mod uses (a leftover in the plugin), or one without a female mesh, has nothing to hide.
+    worn = {struct.unpack_from("<I", x)[0] & 0xFFFFFF for sig, fid, d, _fl in e["recs"] if sig == b"ARMO"
+            and fid >> 24 >= n for t, x in subrecords(d) if t == b"MODL" and len(x) == 4
+            and struct.unpack_from("<I", x)[0] >> 24 >= n}
+    own53 = any(not _bod(armas[a][0]) & 4 and (_bod(armas[a][0]) & ~amask.get(a, 0) | aadd.get(a, 0)) & 1 << 23
+                and any(t == b"MOD3" and zstr(x) for t, x in subrecords(armas[a][0])) for a in worn if a in armas)
     done, arma_body, armo_body = {}, b"", b""
     for armo_obj, arma_objs in e["todo"]:
         mine = []
