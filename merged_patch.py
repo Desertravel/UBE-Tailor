@@ -319,7 +319,7 @@ def smart_slots(e, armo_data, converted):
     return out
 
 
-def tng_revealing(e, armo_data, converted):
+def tng_revealing(e, armo_data, converted, log=None):
     """Armor object ids of this mod to list as revealing for TNG (The New Gentleman). TNG covers the genitals for
     every armor on slot 32 unless it is told the armor is revealing, so with TNG the UBE vulva vanished under a
     bikini top or a bra just like under a dress. A converted body piece with nothing of its own in front of the
@@ -344,7 +344,7 @@ def tng_revealing(e, armo_data, converted):
             body[armo_obj] = names
     if not body:
         return []
-    cov = tc.crotch_cover(sorted({x for v in body.values() for x in v}), tc.CROTCH_SEEN, "crotch_seen")
+    cov = tc.crotch_cover(sorted({x for v in body.values() for x in v}), tc.CROTCH_SEEN, "crotch_seen", log)
     return sorted(o for o, names in body.items() if all(x in cov and cov[x] < CROTCH_MIN for x in names))
 
 
@@ -601,7 +601,7 @@ def build(add=(), exclude=(), log=print, add_foreign=()):
                  n_arma=len({a for _o, al in todo for a in al}))
         e["strip"] = smart_slots(e, {o: win[o][2] if o in win else src_armo[o] for o, _al in todo}, converted)
         reveal += [(name, o) for o in tng_revealing(e, {o: win[o][2] if o in win else src_armo[o] for o, _al in todo},
-                                                     converted)]
+                                                     converted, log)]
         stripped = e["strip"]["arma"]
         for wname, wms, d, _fl in [win[o] for o in win] + [awin[a] for a in awin if a in stripped]:
             names.update({m.lower(): m for m in used_masters(wname, wms, d)})

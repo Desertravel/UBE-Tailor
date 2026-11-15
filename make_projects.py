@@ -660,12 +660,12 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
     return set_name
 
 
-def write_group(members):
+def write_group(members, drop=()):
     path = os.path.join(BS, "SliderGroups", GROUP + ".xml")
     old = set()
     if os.path.exists(path):
         old = {m.get("name") for m in ET.parse(path).getroot().iter("Member")}
-    allm = sorted(old | set(members))
+    allm = sorted((old | set(members)) - set(drop))
     L = ['<?xml version="1.0" encoding="UTF-8"?>', "<SliderGroups>"]
     for g in (GROUP, "UBE"):  # also join "UBE" so the user's UBE presets apply to these sets
         L.append(f"    <Group name={quoteattr(g)}>")

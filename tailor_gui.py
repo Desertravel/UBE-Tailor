@@ -419,7 +419,8 @@ class App:
                 g, grade = self.grade_text(it)
                 tags = tuple(t for t in (grade, "odd" if k % 2 else None) if t)
                 self.tree.insert(pid, "end", iid=it["base"].lower(), text=it["base"], tags=tags,
-                                 values=("☑" if it["base"].lower() in self.checked else "☐", tc.STATES[it["state"]], g,
+                                 values=("☑" if it["base"].lower() in self.checked else "☐",
+                                         tc.STATES[it["state"]] + (f" · {it['by']}" if it.get("by") else ""), g,
                                          ", ".join(map(str, it["slots"]))))
         kind = self.of_kind()
         c = Counter(i["state"] for i in kind)
@@ -455,6 +456,10 @@ class App:
                 tc.restore_crotch(log=self.say)        # once per piece: projects made before 0.9.3 cut the vulva
             except Exception as e:
                 self.say(f"Could not check the converted pieces' crotch: {e}")
+            try:
+                tc.drop_handmade(log=self.say)         # a hand-made UBE version of a converted outfit wins
+            except Exception as e:
+                self.say(f"Could not check for hand-made UBE versions: {e}")
             if not tc.running("SkyrimSE.exe"):
                 self.say("Updating the patches to the meshes BodySlide has built...")
                 for line in tc.repoint(False).strip().splitlines()[-2:]:

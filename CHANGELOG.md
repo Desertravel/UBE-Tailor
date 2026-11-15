@@ -1,6 +1,15 @@
 # Changelog
 
 ## Unreleased
+- **A hand-made UBE version always wins.** When another mod ships a UBE BodySlide project for an outfit (a conversion
+  someone made by hand in Outfit Studio and shared online, or UBE's own armor conversions), the piece shows as
+  "Hand-made UBE · <mod>" and is never converted. Both projects build the same mesh (meshes\!UBE\<the outfit's own
+  path>), so if the Tailor had converted it before, its own project is moved to the backup folder at the next Scan
+  and only the hand-made one is built; UBE Tailor.esp keeps pointing the outfit's armors at that mesh. Run Batch
+  Build in BodySlide afterwards. Before, a standalone UBE version (with only UBE_AllRace.esp as master, e.g. [COCO]
+  Mysterious Mage - UBE) was not noticed, and BodySlide built both over each other.
+- The first patch build after updating measures every converted body piece once for the TNG file (a few minutes on
+  a big list) and now says so, instead of sitting on "Updating the patches..." without a word.
 - **TNG no longer hides the vulva under bikini tops and bras.** TNG (The New Gentleman) covers the genitals for every
   armor on slot 32 unless it is told the armor is revealing, so even with the vulva kept in the body (below) it
   vanished as soon as a bikini top was worn. The Tailor now writes `SKSE\Plugins\UBE Tailor_TNG.ini` in its output

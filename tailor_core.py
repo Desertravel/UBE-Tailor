@@ -30,7 +30,8 @@ UBE_PLUGIN = env.UBE_PLUGIN
 UBE_RACE_RX = re.compile(r"^00UBE_(Breton|Imperial|Nord|Redguard|DarkElf|HighElf|WoodElf|Orc)Race(Vampire)?$", re.I)
 GRADES = {"A": "Excellent", "B": "OK", "C": "Needs review"}
 STATES = {"pending": "Not converted", "built": "Project ready (needs patch)", "done": "Done",
-          "native": "Native UBE", "nosupport": "Not supported", "head": "Head piece (skipped)",
+          "native": "Native UBE", "handmade": "Hand-made UBE", "nosupport": "Not supported",
+          "head": "Head piece (skipped)",
           "oldrim": "Old LE mesh (port to SE first)", "missing": "Mesh missing in the mod"}
 
 
@@ -302,6 +303,114 @@ def _patch_armas():
         yield label, data
 
 
+_OSP_OUT = re.compile(r"<OutputPath>(.*?)</OutputPath>\s*<OutputFile[^>]*>(.*?)</OutputFile>", re.S)
+_HANDMADE = {}
+
+
+def handmade_outputs():
+    """{mesh base (lower case, as in scan items): (mod, slider set)} of the UBE BodySlide projects other mods ship:
+    a hand-made UBE conversion (made in Outfit Studio and shared online) or UBE's own armor conversions. They build
+    meshes/!UBE/<the outfit's own path>, the same file a Tailor project would build, so the Tailor never converts
+    those pieces and gives up its own project for them (drop_handmade). Our output mod is not looked at."""
+    import html
+    out = {}
+    ours = os.path.normcase(os.path.abspath(os.path.join(mp.BS, "SliderSets"))) if mp.BS else None
+    for d in env.bodyslide_dirs("SliderSets"):
+        if ours and os.path.normcase(os.path.abspath(d)) == ours:
+            continue
+        mod = os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(d))))
+        for f in os.listdir(d):
+            if not f.lower().endswith(".osp"):
+                continue
+            path = os.path.join(d, f)
+            try:
+                st = os.stat(path)
+                key = (os.path.normcase(path), st.st_mtime_ns, st.st_size)
+                if key not in _HANDMADE:
+                    with open(path, encoding="utf-8-sig", errors="replace") as fh:
+                        txt = fh.read()
+                    found = []
+                    if "!ube" in txt.lower():
+                        for blk in re.findall(r"<SliderSet\b.*?</SliderSet>", txt, re.S):
+                            m = _OSP_OUT.search(blk)
+                            nm = re.search(r'<SliderSet name="([^"]*)"', blk)
+                            if not m:
+                                continue
+                            rel = html.unescape(m.group(1).strip()).replace("/", "\\")
+                            sub = re.sub(r"(?i)^\\*(meshes\\+)?!ube\\+", "", rel)
+                            if sub == rel:
+                                continue                    # not a UBE output
+                            set_name = html.unescape(nm.group(1)) if nm else f
+                            if set_name.startswith("UBE Auto - "):
+                                continue                    # a Tailor project (another copy of an output mod)
+                            base = sub.rstrip("\\") + "\\" + html.unescape(m.group(2).strip())
+                            found.append((base, set_name))
+                    _HANDMADE[key] = found
+                for base, set_name in _HANDMADE[key]:
+                    out.setdefault(base.lower(), (mod, set_name))
+                    out.setdefault(base.lower() + ".nif", (mod, set_name))
+            except OSError:
+                continue
+    return out
+
+
+def drop_handmade(log=print, dry=False):
+    """The user installed a hand-made UBE version of outfits the Tailor converted (handmade_outputs): move the
+    Tailor's own projects for those pieces to the backup folder, so BodySlide builds only the hand-made one (both
+    write the same mesh). UBE Tailor.esp keeps pointing the outfit's armors at that mesh, so they wear the hand-made
+    UBE version. Returns [(set name, mod)]."""
+    if not mp.BS or not os.path.isdir(os.path.join(mp.BS, "SliderSets")):
+        return []
+    hm = handmade_outputs()
+    if not hm:
+        return []
+    import html
+    gone = []
+    for f in sorted(os.listdir(os.path.join(mp.BS, "SliderSets"))):
+        if not f.lower().endswith(".osp"):
+            continue
+        p = os.path.join(mp.BS, "SliderSets", f)
+        try:
+            with open(p, encoding="utf-8-sig", errors="replace") as fh:
+                txt = fh.read()
+        except OSError:
+            continue
+        m = _OSP_OUT.search(txt)
+        nm = re.search(r'<SliderSet name="([^"]*)"', txt)
+        fold = re.search(r"<DataFolder>(.*?)</DataFolder>", txt)
+        if not (m and nm and fold):
+            continue
+        sub = re.sub(r"(?i)^\\*(meshes\\+)?!ube\\+", "", html.unescape(m.group(1).strip()).replace("/", "\\"))
+        base = (sub.rstrip("\\") + "\\" + html.unescape(m.group(2).strip())).lower()
+        if base not in hm:
+            continue
+        set_name = html.unescape(nm.group(1))
+        gone.append((set_name, hm[base][0]))
+        if dry:
+            continue
+        dest = os.path.join(env.backup_dir(), "replaced by hand-made UBE")
+        os.makedirs(os.path.join(dest, "SliderSets"), exist_ok=True)
+        shutil.move(p, os.path.join(dest, "SliderSets", f))
+        sd = os.path.join(mp.BS, "ShapeData", html.unescape(fold.group(1)))
+        if os.path.isdir(sd):
+            os.makedirs(os.path.join(dest, "ShapeData"), exist_ok=True)
+            target = os.path.join(dest, "ShapeData", os.path.basename(sd))
+            if os.path.exists(target):
+                shutil.rmtree(target)
+            shutil.move(sd, target)
+    if gone and not dry:
+        db = load_db()
+        for set_name, _mod in gone:
+            db.pop(set_name, None)
+        save_db(db)
+        mp.write_group([], drop={n for n, _m in gone})
+        mods = sorted({m for _n, m in gone})
+        log(f"Hand-made UBE version found for {len(gone)} piece(s) you converted ({', '.join(mods[:3])}"
+            f"{' ...' if len(mods) > 3 else ''}): the Tailor's own projects moved to the backup folder, BodySlide "
+            f"builds the hand-made ones. Run Batch Build in BodySlide.")
+    return gone
+
+
 def scan():
     """Every outfit mesh UBE races should wear -> list of items (one per mesh base), with its state.
     item["file"] = the outfit plugin when it is not in the merged patch yet (repoint() adds it once converted);
@@ -337,11 +446,15 @@ def scan():
             name = pfile or next((label + e for e in (".esp", ".esm", ".esl") if (label + e).lower() in loc), "")
             fmt[label] = plugin_format(loc[name.lower()]) if name.lower() in loc else "SE"
         return fmt[label]
+    handmade = handmade_outputs()
     for it in items.values():
         it["format"] = format_of(it["plugin"], it["file"])
         it["set"] = set_name_of(it["base"])
         proj = os.path.exists(osp_of(it["base"]))
-        if proj:
+        if it["base"].lower() in handmade:
+            it["state"] = "handmade"     # another mod ships a UBE BodySlide project for it: never converted
+            it["by"] = handmade[it["base"].lower()][0]
+        elif proj:
             it["state"] = "done" if it["ube_all"] else "built"
         elif it["ube_any"]:
             it["state"] = "native"       # a UBE mesh from another mod (installed by the user): never touched
@@ -996,7 +1109,7 @@ def _crotch_one(set_name, ref_names, O, D, ray=CROTCH_RAY):
     return hit / len(O)
 
 
-def crotch_cover(sets, ray=CROTCH_RAY, key="crotch"):
+def crotch_cover(sets, ray=CROTCH_RAY, key="crotch", log=None):
     """{set: share 0..1} for converted pieces: how much of the UBE vulva the piece's fabric hides when seen from
     outside (merged_patch.smart_slots: UBE and TNG hide the vulva for anything worn on slot 52 / 53, so a garter,
     a belt or crotchless panties on those slots made it vanish). Kept in the database; a new conversion clears it."""
@@ -1009,6 +1122,9 @@ def crotch_cover(sets, ray=CROTCH_RAY, key="crotch"):
         elif s in db and os.path.isfile(os.path.join(mp.BS, "SliderSets", mp.safe(s) + ".osp")):
             todo.append(s)
     if todo:
+        if log and len(todo) > 50:
+            log(f"   measuring {len(todo)} converted piece(s) once (who covers the vulva), about "
+                f"{max(1, len(todo) // 600)} minute(s)...")
         refs = mp.load_refs()
         ref_names = {r.shape for r in refs}
         O, D = _crotch_rays(refs)
