@@ -78,7 +78,7 @@ def load_state():
     except (OSError, ValueError):
         st = {}
     st.setdefault("plugins", [])
-    st.setdefault("foreign", [])         # other UBE patches whose armor addons we override (mesh, slot 53)
+    st.setdefault("foreign", [])         # other UBE patches whose armor addons we override (built mesh)
     st.setdefault("ids", {})
     return st
 
@@ -384,8 +384,12 @@ def smart_slots(e, armo_data, converted):
     # Every UBE body armor sits on 32 + 53, like UBE's naked body (mod_records): the vulva is partition 53 of the
     # UBE body each converted body piece carries, and the game does not draw it when the piece is not on 53.
     # A piece of the same outfit still on 53 (it covers the vulva: closed panties, pantyhose) would share that slot
-    # with the body pieces and only one of the two meshes would show, so it moves off 53 as well.
-    if any(_bod(armas[a]) & 4 for _o, al in e["todo"] for a in al):
+    # with the body pieces and only one of the two meshes would show, so it moves off 53 as well. A body piece
+    # another UBE patch converts (not in todo) is on 53 too, so any worn body addon of the mod counts.
+    worn = {struct.unpack_from("<I", x)[0] & 0xFFFFFF for sig, fid, d, _fl in e["recs"] if sig == b"ARMO"
+            and fid >> 24 >= n for t, x in subrecords(d) if t == b"MODL" and len(x) == 4
+            and struct.unpack_from("<I", x)[0] >> 24 >= n}
+    if any(_bod(armas[a]) & 4 for a in worn if a in armas):
         for _o, al in e["todo"]:
             for a in al:
                 bod = _bod(armas[a])
@@ -612,17 +616,13 @@ def override_records():
 
 
 def foreign_overrides(patch, converted, log=print):
-    """Entries for one other UBE patch: its UBE armor addons whose mesh is built as UBE (MOD3 -> !UBE) or whose body
-    piece clashes on slot 53 with the outfit's own slot-53 piece. Returns [dict(key, ms, name, data, flags, new,
-    masters)] - masters = the plugins the record refers to (only those become masters of UBE Tailor.esp)."""
+    """Entries for one other UBE patch: its UBE armor addons whose mesh is built as UBE (MOD3 -> !UBE). Their body
+    pieces keep slot 53 (the UBE vulva is partition 53 of the mesh and shows only on that slot); a slot-53 piece of
+    the outfit that the Tailor converts moves to 54 instead (smart_slots). Returns [dict(key, ms, name, data, flags,
+    new, masters)] - masters = the plugins the record refers to (only those become masters of UBE Tailor.esp)."""
     found = [f for f in tc.foreign_armas() if f["patch"].lower() == patch.lower()]
-    loc = plugin_locations()
-    s53 = {}
     out = []
     for f in found:
-        src = f["src"].lower()
-        if src not in s53:
-            s53[src] = tc.slot53_models(loc[src]) if src in loc else set()
         subs, changed = [], False
         m3 = tc.mesh_path(next((zstr(x) for t, x in subrecords(f["data"]) if t == b"MOD3"), ""))
         key = m3.lower()
@@ -634,11 +634,6 @@ def foreign_overrides(patch, converted, log=print):
                 y = reindex_alt(x, built_shapes(m3), source_shapes(m3))
                 changed |= y != x
                 x = y
-            elif t in (b"BOD2", b"BODT") and key.replace("!ube\\", "", 1) in s53[src]:
-                f0 = struct.unpack_from("<I", x)[0]
-                if f0 & 4 and f0 & 1 << 23:
-                    x = struct.pack("<I", f0 & ~(1 << 23)) + x[4:]
-                    changed = True
             subs.append((t, x))
         if not changed:
             continue                              # the other patch's own record is right as it is
@@ -760,7 +755,7 @@ def build(add=(), exclude=(), log=print, add_foreign=()):
             entries.append(dict(name=pname, foreign=fo, masters=allm, n_arma=0, todo=[]))
             n_over += len(fo)
     if n_over:
-        log(f"   {n_over} armor addon(s) of other UBE patches overridden (built UBE mesh / slot 53)")
+        log(f"   {n_over} armor addon(s) of other UBE patches overridden (built UBE mesh)")
 
     groups, cur, cur_m, cur_n = [], [], set(), 0
     for e in entries:

@@ -183,24 +183,6 @@ def left_out(items):
     return [i for i in items if i["state"] == "pending" and keys.get(i["base"].lower()) in started]
 
 
-def slot53_models(path):
-    """Models (lower case) of an outfit plugin whose body piece must not carry UBE's extra slot 53: the plugin has
-    its own slot-53 piece (pants, leggings) and its original armor addon with that model has no slot 53. Worn
-    together, two pieces on slot 53 make the game hide one of them."""
-    ms, recs = read_plugin(path, {b"ARMA"})
-    bod = lambda d: next((struct.unpack_from("<I", x)[0] for t, x in subrecords(d) if t in (b"BOD2", b"BODT")), 0)
-    own = [d for _s, fid, d, _fl in recs if fid >> 24 >= len(ms)]
-    if not any(bod(d) & 1 << 23 and not bod(d) & 4 for d in own):
-        return set()
-    out = set()
-    for d in own:
-        if bod(d) & 4 and not bod(d) & 1 << 23:
-            m3 = next((zstr(x) for t, x in subrecords(d) if t == b"MOD3"), "")
-            if m3:
-                out.add(mesh_path(m3).lower())
-    return out
-
-
 def foreign_armas(aware=None):
     """UBE armor addons that OTHER UBE patches add to outfit mods (e.g. made with UBE's xEdit script, or a mod's own
     UBE patch): [dict(patch, path, ms, src, fid, data, flags)] - fid as numbered inside that patch, src = the outfit

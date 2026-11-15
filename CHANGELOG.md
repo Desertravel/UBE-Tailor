@@ -9,6 +9,9 @@
   Witchiness bras, TEWOBA bikini tops) were on 32 only and showed a hole where the vulva is. Now every body piece
   gets 53, like UBE's own conversions, and a piece of the same outfit still on 53 (closed panties, tights) moves to
   54. Fixed at the next Scan (patch rebuild); no conversion or BodySlide build needed.
+  The same goes for body pieces of other UBE patches (made with UBE's xEdit script or shipped by a mod): the Tailor
+  no longer takes slot 53 off them when it overrides their mesh path, and a slot-53 piece of that outfit which the
+  Tailor converts moves to 54.
 - **Colour variants of converted outfits show on the right parts again.** Many outfits make their colour versions
   with alternate textures on the armor addon (white / black / gold sets of [COCO] Mysterious Mage, Caenarvon,
   ralfeta panties...). The game finds the part by its index in the mesh, and a converted mesh lists its parts in
