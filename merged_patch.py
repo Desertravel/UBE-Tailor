@@ -436,13 +436,16 @@ def tng_revealing(e, armo_data, converted, log=None):
     return sorted(o for o, names in body.items() if all(x in cov and cov[x] < CROTCH_MIN for x in names))
 
 
-TNG_INI = os.path.join("SKSE", "Plugins", "UBE Tailor_TNG.ini")
+TNG_INI = os.path.join("SKSE", "Plugins", "TNG", "UBE Tailor_TNG.ini")    # TNG 4 reads only that folder
+TNG_INI_OLD = os.path.join("SKSE", "Plugins", "UBE Tailor_TNG.ini")       # where an earlier build put it
 
 
 def write_tng_ini(records, log=print):
-    """SKSE/Plugins/UBE Tailor_TNG.ini in the output mod: the revealing armors for TNG (tng_revealing), as
+    """SKSE/Plugins/TNG/UBE Tailor_TNG.ini in the output mod: the revealing armors for TNG (tng_revealing), as
     "0x<id>~<plugin>" like the TNG files of bikini armor mods. Removed when there are none."""
     path = os.path.join(mp.MOD, TNG_INI)
+    if os.path.isfile(os.path.join(mp.MOD, TNG_INI_OLD)):
+        os.remove(os.path.join(mp.MOD, TNG_INI_OLD))
     if not records:
         if os.path.isfile(path):
             os.remove(path)

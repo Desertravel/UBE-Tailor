@@ -20,7 +20,8 @@
   a big list) and now says so, instead of sitting on "Updating the patches..." without a word.
 - **TNG no longer hides the vulva under bikini tops and bras.** TNG (The New Gentleman) covers the genitals for every
   armor on slot 32 unless it is told the armor is revealing, so even with the vulva kept in the body (below) it
-  vanished as soon as a bikini top was worn. The Tailor now writes `SKSE\Plugins\UBE Tailor_TNG.ini` in its output
+  vanished as soon as a bikini top was worn. The Tailor now writes `SKSE\Plugins\TNG\UBE Tailor_TNG.ini` (TNG 4
+  reads its ini files only from that folder) in its output
   mod with every patch build: each converted body armor with nothing of its own in front of the vulva (rays from
   the UBE vulva, 30 units: skirts and plate count as covering) is listed as `RevealingRecord`, the way bikini armor
   mods ship their own TNG files. On the test list 838 of 1758 body armors (bikinis, lingerie, the revealing outfit
