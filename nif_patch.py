@@ -91,8 +91,23 @@ class SseNif:
             return None
         name = self.strings[name_i] if 0 <= name_i < len(self.strings) else f"block{bi}"
         return {"block": bi, "name": name, "nverts": nverts, "copies": copies, "bound_ofs": bound_ofs,
-                "skinned": skin >= 0,
+                "skinned": skin >= 0, "skin_xf": self._skin_xf(skin) if skin >= 0 else None,
                 "xf": (t, r, scale), "xf_ofs": xf_ofs}
+
+    def _skin_xf(self, skin_bi):
+        """(t, R, scale) of NiSkinData's skin transform (global -> skin space), or None. A skinned shape's points are
+        in that space: skin = scale * R @ global + t. Usually identity; rings and other pieces made in the space of
+        their bone (vanilla style) have the bone's offset here."""
+        if self.block_types[skin_bi] not in ("NiSkinInstance", "BSDismemberSkinInstance"):
+            return None
+        (data_bi,) = struct.unpack_from("<i", self.buf, self.block_ofs[skin_bi])
+        if data_bi < 0 or self.block_types[data_bi] != "NiSkinData":
+            return None
+        f = struct.unpack_from("<13f", self.buf, self.block_ofs[data_bi])
+        R, t, s = np.array(f[:9]).reshape(3, 3), np.array(f[9:12]), f[12] or 1.0
+        if np.allclose(R, np.eye(3), atol=1e-6) and np.allclose(t, 0, atol=1e-6) and abs(s - 1) < 1e-6:
+            return None
+        return t, R, s
 
     def _skin_partition(self, skin_bi):
         if self.block_types[skin_bi] not in ("NiSkinInstance", "BSDismemberSkinInstance"):
@@ -130,10 +145,23 @@ class SseNif:
         struct.pack_into("<4f", self.buf, shape["bound_ofs"], *c, rad)
 
     def to_global(self, shape, local):
+        """Points of the shape where the game shows them at rest: skinned shapes through their skin transform,
+        others through the shape's own transform."""
+        if shape["skinned"]:
+            if shape["skin_xf"] is None:
+                return local
+            t, r, s = shape["skin_xf"]
+            return ((local - t) / s) @ r
         t, r, s = shape["xf"]
         return local @ (r.T * s) + t
 
     def to_local_delta(self, shape, delta):
+        """A move in global space as the same move of the shape's stored points (and of BodySlide slider data)."""
+        if shape["skinned"]:
+            if shape["skin_xf"] is None:
+                return delta
+            _t, r, s = shape["skin_xf"]
+            return s * delta @ r.T
         _t, r, s = shape["xf"]
         return delta @ np.linalg.inv(r.T * s)
 

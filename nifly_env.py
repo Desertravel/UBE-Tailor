@@ -101,3 +101,42 @@ def knn_brute(points, queries, k=1, chunk=2048):
 def verts(nif_path, shape_index=0):
     n = NifFile(nif_path)
     return np.array(n.shapes[shape_index].verts, dtype=np.float64)
+
+
+def _skin_xf(shape):
+    """(t, R, scale) of a skinned shape's global-to-skin transform (skin = scale * R @ global + t), or None when it
+    has none or it is identity. The stored points and their slider data are in skin space."""
+    try:
+        if not shape.bone_names:
+            return None
+        g = shape.global_to_skin
+    except Exception:
+        return None
+    if g is None:
+        return None
+    R = np.array([g.rotation[i][:] for i in range(3)], dtype=np.float64)
+    t = np.array(g.translation[:], dtype=np.float64)
+    s = float(g.scale or 1.0)
+    if np.allclose(R, np.eye(3), atol=1e-6) and np.allclose(t, 0, atol=1e-6) and abs(s - 1) < 1e-6:
+        return None
+    return t, R, s
+
+
+def body_points(shape, P=None):
+    """A shape's points (its stored ones, or P in the same space) where the game shows them at rest, in the space of
+    the UBE body: a ring made in the space of its finger bone is stored around 0,0,0."""
+    P = np.array(shape.verts if P is None else P, dtype=np.float64)
+    x = _skin_xf(shape)
+    return P if x is None else ((P - x[0]) / x[2]) @ x[1]
+
+
+def body_delta(shape, D):
+    """Stored slider data (skin space) as moves in body space."""
+    x = _skin_xf(shape)
+    return D if x is None else (D / x[2]) @ x[1]
+
+
+def skin_delta(shape, D):
+    """Moves in body space as slider data for the stored points."""
+    x = _skin_xf(shape)
+    return D if x is None else x[2] * D @ x[1].T

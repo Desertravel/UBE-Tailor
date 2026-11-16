@@ -20,7 +20,7 @@ import ube_field
 from collections import Counter
 
 import env
-from nifly_env import NifFile, knn
+from nifly_env import NifFile, body_points, knn
 from plugin_lib import enabled_plugins, plugin_locations, read_plugin, subrecords, zstr
 from resolve_mesh import Resolver
 
@@ -440,7 +440,7 @@ def scan():
             it["state"] = "done" if it["ube_all"] else "built"
         elif it["ube_any"]:
             it["state"] = "native"       # a UBE mesh from another mod (installed by the user): never touched
-        elif db.get(it["set"], {}).get("head"):
+        elif db.get(it["set"], {}).get("head") and db[it["set"]].get("method", 0) >= mp.METHOD:
             it["state"] = "head"         # converting found it sits above the neck only
         elif db.get(it["set"], {}).get("oldrim"):
             it["state"] = "oldrim"       # the mod ships a Skyrim LE mesh
@@ -794,7 +794,8 @@ def _crashed(err):
 def _keep(db, base, name, err, lines, made, failed):
     """Record one conversion result in the database and the made / failed lists."""
     if err and err.startswith("HEAD: "):
-        db[set_name_of(base)] = {"base": base, "head": True}     # listed as a head piece from now on
+        # listed as a head piece from now on (until a newer method, which judges the mesh again)
+        db[set_name_of(base)] = {"base": base, "head": True, "method": mp.METHOD}
     elif err and err.startswith("OLDRIM: "):
         db[set_name_of(base)] = {"base": base, "oldrim": True}   # listed as "old format" from now on
     elif err:
@@ -953,13 +954,14 @@ def outfit_at_preset(set_name, pv, w, ref_names):
     nif = NifFile(os.path.join(mp.BS, "ShapeData", folder, src))
     osd = _osd_sparse(os.path.join(mp.BS, "ShapeData", folder, src[:-4] + ".osd"))
     zapped = {d.get("target") for sl in ss.findall("Slider") if sl.get("zap") == "true" for d in sl.findall("Data")}
-    P = {}
+    P, shape_of = {}, {}
     for s in nif.shapes:
         if s.name in ref_names or s.name in zapped or re.match(r"(virtual|3ba|collision)", s.name, re.I):
             continue
         if not (s.textures.get("Diffuse") or ""):
             continue                       # untextured helper (physics collision body)
         P[s.name] = np.array(s.verts, dtype=np.float64)
+        shape_of[s.name] = s
     size = "big" if w else "small"
     for sl in ss.findall("Slider"):
         if sl.get("zap") == "true" or sl.get("uv") == "true":
@@ -974,7 +976,7 @@ def outfit_at_preset(set_name, pv, w, ref_names):
             if dn in osd:
                 i, dd = osd[dn]
                 P[d.get("target")][i] += v / 100.0 * dd
-    return P
+    return {n: body_points(shape_of[n], p) for n, p in P.items()}     # slider data is in each shape's own space
 
 
 def signed_depth(P, S):
@@ -1065,7 +1067,7 @@ def _crotch_one(set_name, ref_names, O, D, ray=CROTCH_RAY):
         if s.name in ref_names or s.name in zapped or not (s.textures.get("Diffuse") or "") \
                 or re.match(r"(virtual|3ba|collision)", s.name, re.I):
             continue
-        Vs.append(np.array(s.verts, dtype=np.float64))
+        Vs.append(body_points(s))
         Fs.append(np.array(s.tris, dtype=np.int64) + off)
         off += len(Vs[-1])
     if not Vs or not len(O):

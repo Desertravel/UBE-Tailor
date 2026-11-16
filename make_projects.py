@@ -55,7 +55,9 @@ NECK_Z = 105.0
 #   1 = 2026-11-11: anti-clip push-out, UBE bone weights, SMP-safe bones, head pieces judged by the mesh
 #   2 = 2026-11-12: no old 3BA BODYTRI in projects, SMP safety net after the weight copy, flat feet for
 #       heel-posed stockings / pantyhose (pieces without the feet slot)
-METHOD = 2
+#   3 = 2026-11-16: pieces made in a bone's space (rings, some armors) read where the game shows them; one-bone
+#       pieces keep their author's weights. Head-piece verdicts of older versions are checked again.
+METHOD = 3
 
 
 class HeadPiece(Exception):
@@ -75,6 +77,18 @@ class OldrimMesh(Exception):
     """The mod ships the mesh in the old Skyrim LE format, which this converter (and often SE itself) cannot use."""
 
 
+def _one_bone(shape):
+    """True when every point of a skinned shape hangs fully on one and the same bone."""
+    try:
+        bw = shape.bone_weights
+    except Exception:
+        return False
+    if not bw or len(bw) != 1:
+        return False
+    lst = next(iter(bw.values()))
+    return len({i for i, w in lst if w > 0.999}) == len(shape.verts)
+
+
 def lowest_point(nif_path):
     """Lowest z of all shapes of a nif, in the nif's global space."""
     n = SseNif(nif_path)
@@ -82,7 +96,7 @@ def lowest_point(nif_path):
     for s in n.shapes:
         p = n.positions(s)
         if len(p):
-            zs.append(float((p if s["skinned"] else n.to_global(s, p))[:, 2].min()))
+            zs.append(float(n.to_global(s, p)[:, 2].min()))
     return min(zs) if zs else None
 
 
@@ -402,7 +416,8 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
     nif = SseNif(nif_path)
     shapes = [s for s in nif.shapes if s["name"] not in ref_names]
     pos = {s["block"]: nif.positions(s) for s in shapes}
-    gpos = {s["block"]: (pos[s["block"]] if s["skinned"] else nif.to_global(s, pos[s["block"]])) for s in shapes}
+    # where the game shows each point at rest (a ring made in its finger bone's space is stored around 0,0,0)
+    gpos = {s["block"]: nif.to_global(s, pos[s["block"]]) for s in shapes}
     tex_of = {rename.get(n, n): t for n, (t, _p) in info.items()}
     parts_of = {rename.get(n, n): p for n, (_t, p) in info.items()}
     main = [s for s in shapes if s["name"] in bodies and "etc" not in tex_of.get(s["name"], "").lower()]
@@ -479,7 +494,7 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
             pushed += int((np.abs(p).sum(1) > 0).sum())
             d = d + p
         conformed[s["name"]] = gpos[s["block"]] + d
-        nif.set_positions(s, pos[s["block"]] + (d if s["skinned"] else nif.to_local_delta(s, d)))
+        nif.set_positions(s, pos[s["block"]] + nif.to_local_delta(s, d))
     if Vh is not None and feet_in:
         fs = next(s for s in nif.shapes if s["name"] == feet.shape)
         if not fs["skinned"]:
@@ -489,7 +504,12 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
     # bone weights: copy the UBE body/feet/hands weights onto the conformed outfit shapes
     with open(nif_path, "rb") as f:
         before_weights = f.read()
-    ube_weights.copy_weights(nif_path, [s["name"] for s in shapes if s["name"] not in bodies], refs,
+    # a shape its author tied 100% to one bone (a ring on a finger bone, an amulet on the neck...) is one solid piece:
+    # it keeps that bone, or the skin weights would bend and stretch it with every finger move
+    rigid = {rename.get(x.name, x.name) for x in src_nif.shapes if _one_bone(x)} - bodies
+    if rigid:
+        log(f"   weights: kept the author's one-bone weights on {', '.join(sorted(rigid))}")
+    ube_weights.copy_weights(nif_path, [s["name"] for s in shapes if s["name"] not in bodies | rigid], refs,
                              [Vh if Vh is not None and r is feet else r.verts for r in refs], log=log)
     # HDT-SMP safety net: a bone the physics XML does not declare falls to the floor and drags the skeleton with it.
     # Whatever the weight copy did, the result may not have a falling bone the outfit's own source did not have.
@@ -577,6 +597,12 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
     own = sum(int((f.alpha > 0).sum()) for f in near.values())
     for name, _a in areas.items():
         sliders.setdefault(name, {"name": name, "invert": "false", "small": "0", "big": "0"})
+    by_name = {s["name"]: s for s in shapes}
+
+    def stored(n, diff):
+        """Slider data is applied to the stored points: a skinned shape's moves in its skin space."""
+        s = by_name[n]
+        return nif.to_local_delta(s, diff) if s["skinned"] else diff
     data_for = {}
     for name, attrs in sliders.items():
         rows = []
@@ -594,7 +620,7 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
                 diff = push * near[n](area)[:, None] * nn
                 keep = np.nonzero(np.abs(diff).max(1) > 1e-3)[0]
                 if len(keep):
-                    entries.append((n + name, keep, diff[keep]))
+                    entries.append((n + name, keep, stored(n, diff[keep])))
                     rows.append((n + name, n, None))
         elif attrs.get("uv") != "true" and attrs.get("zap") != "true":
             parts = []
@@ -608,7 +634,7 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
                     mag = np.abs(diff).max(1)
                     keep = np.nonzero(mag > 1e-5)[0]
                     if len(keep) and mag.max() > 1e-3:
-                        entries.append((n + name, keep, diff[keep]))
+                        entries.append((n + name, keep, stored(n, diff[keep])))
                         rows.append((n + name, n, None))
         data_for[name] = rows
     write_osd(os.path.join(shape_dir, osd_name), entries)

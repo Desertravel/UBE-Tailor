@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+- **Rings, amulets and some armors fit where they belong.** Many rings (and some outfits) are made in the space of
+  the bone they hang on: their points are stored around 0,0,0 and the skin data says where the game puts them. The
+  Tailor read those points as if they were already in place, so it fitted a ring to the body near the feet and
+  moved it about half a unit off the finger (CrbEX Dragon Ring, AoM Cat Ring), and it judged pieces like VigCgT
+  ShaoKhan Knight armor as "head pieces" (lowest point z=152) and never converted them. Now every piece is read
+  where the game shows it, and its moves and slider data are written back in its own space. On the test list the
+  rings sit on the finger again (median gap to the skin 0.82 -> 0.21, 1.55 -> 0.79, 1.04 -> 0.29), and outfits
+  without such a transform come out byte-identical.
+- **One-bone jewelry stays one solid piece.** A shape its author tied 100% to one bone (a ring on a finger, a
+  pendant on the neck) keeps that bone instead of getting the skin's weights, which spread a ring over the hand and
+  three finger bones and bent it with every finger move. Its sliders follow that bone's part of the body.
+- Conversion method 3: projects made before are listed as outdated (re-convert to get the fixes; outfits without a
+  bone-space transform come out the same), and pieces an older version listed as head pieces are checked again at
+  their next conversion.
+
 ## 0.9.3-beta (2026-11-15)
 - **No more hole at the crotch under bras and bikini tops.** The vulva of the UBE body is its partition 53, and the
   game draws that part of a mesh only when the armor addon is on slot 53, so UBE puts every body armor on 32 + 53.

@@ -32,7 +32,7 @@ import env
 import make_projects as mp
 import tailor_core as tc
 import ube_field
-from nifly_env import NifFile, knn
+from nifly_env import NifFile, body_delta, body_points, knn, skin_delta
 
 try:
     from scipy.spatial import cKDTree as _KDTree
@@ -102,13 +102,15 @@ class Project:
         nif = NifFile(os.path.join(mp.BS, "ShapeData", folder, src))
         ref_names = {r.shape for r in refs}
         zapped = {d.get("target") for sl in ss.findall("Slider") if sl.get("zap") == "true" for d in sl.findall("Data")}
-        self.rest = {}
+        self._nif = nif                          # keeps the shapes below readable (save() asks for their transform)
+        self.rest, self.shape_of = {}, {}       # rest points in the UBE body's space; the slider data too
         for s in nif.shapes:
             if s.name in ref_names or s.name in zapped or re.match(r"(virtual|3ba|collision)", s.name, re.I):
                 continue
             if not (s.textures.get("Diffuse") or ""):
                 continue
-            self.rest[s.name] = np.array(s.verts, dtype=np.float64)
+            self.rest[s.name] = body_points(s)
+            self.shape_of[s.name] = s
         self.osd = tc._osd_sparse(self.orig if os.path.isfile(self.orig) else self.osd_path)
         self.sliders = []            # (slider attributes, {shape: osd entry name})
         for sl in ss.findall("Slider"):
@@ -125,7 +127,7 @@ class Project:
                 if dn in self.osd:
                     i, dd = self.osd[dn]
                     D[i] = dd
-                self.dense[(shape, dn)] = D
+                self.dense[(shape, dn)] = body_delta(self.shape_of[shape], D)
 
     def values(self, pv, size):
         return np.array([tc._slider_value(a, pv, size) / 100.0 for a, _d in self.sliders])
@@ -153,7 +155,7 @@ class Project:
             if name not in by_entry:
                 entries.append((name, i, dd))
                 continue
-            D = self.dense[by_entry[name]]
+            D = skin_delta(self.shape_of[by_entry[name][0]], self.dense[by_entry[name]])
             keep = np.nonzero(np.abs(D).max(1) > 1e-5)[0]
             entries.append((name, keep, D[keep]))
         mp.write_osd(self.osd_path + ".tmp", entries)
