@@ -1,18 +1,29 @@
 # Changelog
 
-## Unreleased
+## 0.9.4-beta (2026-11-17)
+Rings and jewelry fit, a much faster start, the load order health check, head-only mods (earrings, circlets,
+wigs) on UBE characters, and outfits for male UBE characters. After updating: start the Tailor (it updates the
+patch by itself), re-convert the pieces it lists as outdated, then Batch Build in BodySlide.
+
+**Who needs the male parts?** Most players use a female UBE character on the UBE female body: for them nothing
+changes. The two entries about men (male UBE characters see their outfits; LDD Male Shape Shifters sliders) only
+matter if you play a male UBE character or have male UBE NPCs.
+
 - **UBE men see their outfits.** A UBE man wears the UBE body (the female mesh shaped by male morphs), but the
   patch's UBE armor addons kept the outfit's own male model: none at all for most outfit mods, so a male UBE
   character in a converted outfit was invisible but for head, hands and feet; otherwise the vanilla male mesh. The
   UBE copies now give men the converted female model too (third and first person), as UBE's own armor patch does.
   On the test modpack: 2897 copies showed nothing on men and 5285 the vanilla male mesh, now all 8416 the UBE one.
   Nothing else in the patch changes, and other races keep the mod's male model.
-- **Outfits follow male UBE bodies (optional).** Sliders imported into UBE's own "... Male" projects, such as LDD
+- **Outfits follow male UBE bodies (optional, experimental).** Sliders imported into UBE's own "... Male" projects, such as LDD
   Male Shape Shifters for UBE 2.0 (in Outfit Studio: Slider > Import > Import OSD, then Save Project), share UBE's
   body data, and the Tailor now gives them to every outfit it converts, always off by default (female bodies and
   presets do not change). Without them a body armor had 6281 to 10399 points inside the body at the Shape Shifter /
   Graves shapes; with them 227 to 309. Nothing changes when no such sliders are installed. Re-convert outfits made
   before to get them.
+  **Experimental:** these numbers are measured by the Tailor on our test list, but we have not yet played a male
+  character with LDD in game, so we cannot promise every outfit follows every LDD shape perfectly. Please tell us
+  how it looks for you (screenshots help).
 - **Health check: a plugin sorted below the patch.** UBE characters only see armor addons that name the UBE races,
   and the patch adds them to each armor. A load order sort (LOOT, MO2's Sort) had put a Synthesis patch between
   the UBE Tailor files, and its armor records, without those addons, won: 561 armors (rings, amulets, outfits)
