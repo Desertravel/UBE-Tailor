@@ -1,6 +1,18 @@
 # Changelog
 
 ## Unreleased
+- **Health check: a plugin sorted below the patch.** UBE characters only see armor addons that name the UBE races,
+  and the patch adds them to each armor. A load order sort (LOOT, MO2's Sort) had put a Synthesis patch between
+  the UBE Tailor files, and its armor records, without those addons, won: 561 armors (rings, amulets, outfits)
+  went invisible on UBE characters. The health check now names any plugin below the patch that undoes it, and
+  moves the UBE Tailor files back to the bottom when MO2 is closed. The patch already carries what such a plugin
+  changes (it copies the winning record), so nothing of it is lost.
+- **Earrings, circlets, hats and wigs of head-only mods show on UBE characters.** UBE races have no armor race, so
+  they wear only armor addons that name them. The Tailor never converts head pieces (they need no new shape), and
+  a mod with nothing else, or whose chokers the conversion found above the neck, never got into the patch: all of
+  it was invisible on UBE characters (Vanilla Chokers and Earrings, JS Vanilla Circlets, KS Wigs, Dragon Priest
+  masks... 18 mods on the test modpack). Such mods now join the patch as they are; a mod with a piece still to
+  convert joins once it is converted, and one with an old LE mesh does not.
 - **BodySlide started from the Tailor warns about projects it cannot see.** MO2 shows a program the mod folders as
   they were when it started that program, and a BodySlide started from the Tailor gets the Tailor's view. Projects
   converted since the Tailor was opened are new files there, so Batch Build skipped them without a word (pieces

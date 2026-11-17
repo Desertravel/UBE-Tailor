@@ -108,6 +108,52 @@ def load_order():
     return pos
 
 
+def undone_by_later():
+    """{plugin: armors} - enabled plugins loading after a UBE Tailor file that override armors of the patch without
+    its UBE armor addons, so UBE characters see nothing of them. A load order sorter (LOOT, MO2's Sort) put a
+    Synthesis patch between the Tailor's files and 561 armors went invisible. Only plugins below the first of our
+    files are read, so this is quick."""
+    files = {f.lower() for f in merged_files()}
+    lo = load_order()
+    mine_pos = [lo[f] for f in files if f in lo]
+    if not mine_pos:
+        return {}
+    loc = plugin_locations()
+    on = {p.lower() for p in enabled_plugins()}
+
+    def armors(low):
+        try:
+            ms, recs = read_plugin(loc[low], {b"ARMO"})
+        except (OSError, ValueError, struct.error, KeyError):
+            return {}
+        ml = [m.lower() for m in ms]
+        out = {}
+        for sig, fid, d, _fl in recs:
+            i = fid >> 24
+            mods = set()
+            for t, x in subrecords(d):
+                if t == b"MODL" and len(x) == 4:
+                    f = struct.unpack("<I", x)[0]
+                    mods.add(((ml[f >> 24] if f >> 24 < len(ml) else low), f & 0xFFFFFF))
+            out[((ml[i] if i < len(ml) else low), fid & 0xFFFFFF)] = mods
+        return out
+    mine = {}                                   # armor -> (position of our last file with it, our UBE addons)
+    for f in sorted(files, key=lambda x: lo.get(x, -1)):
+        if f in lo and f in loc:
+            for k, mods in armors(f).items():
+                mine[k] = (lo[f], {m for m in mods if m[0] in files})
+    last = {}                                   # armor -> (position, plugin, addons) of the last plugin after ours
+    for p in sorted((p for p in on if p not in files and lo.get(p, -1) > min(mine_pos) and p in loc), key=lo.get):
+        for k, mods in armors(p).items():
+            if k in mine and lo[p] > mine[k][0]:
+                last[k] = (lo[p], p, mods)
+    out = {}
+    for k, (_pos, p, mods) in last.items():
+        if mine[k][1] and not mine[k][1] & mods:
+            out[p] = out.get(p, 0) + 1
+    return out
+
+
 # ---------------------------------------------------------------- form id renumbering
 def remapper(ms, name, index):
     def R(fid):

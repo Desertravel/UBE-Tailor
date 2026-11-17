@@ -201,6 +201,17 @@ def check(deep=False, log=None):
             out.append(Finding("loadorder", "fix" if can_edit else "you",
                                f"{f} {why} - it must be ticked and at the bottom of the load order", [f], "loadorder"))
 
+    try:
+        undone = merged_patch.undone_by_later()
+    except Exception:
+        undone = {}
+    for p, n in sorted(undone.items(), key=lambda x: -x[1]):
+        out.append(Finding("undone", "fix" if can_edit else "you",
+                           f"{p} loads after the Tailor's patch and undoes the UBE version of {n} armor(s) - UBE "
+                           f"characters see nothing of them. Keep the UBE Tailor files at the very bottom of the load "
+                           f"order, below {p} (in MO2's Plugins list, drag {p} above UBE Tailor.esp)",
+                           [p], "loadorder"))
+
     graded = [(i, db.get(i["set"], {}).get("qa", {})) for i in conv]
     bad_fit = [i["base"] for i, q in graded if q.get("grade") == "C"]
     bad_move = [i["base"] for i, q in graded if q.get("motion") == "C"]

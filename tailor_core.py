@@ -124,6 +124,7 @@ def merged_files():
 
 
 _RES = {}
+HEAD_ONLY = set()             # plugins not in the patch whose pieces are all head pieces (scan() fills it)
 
 
 def mesh_exists(base):
@@ -407,9 +408,12 @@ def scan():
     item["file"] = the outfit plugin when it is not in the merged patch yet (repoint() adds it once converted);
     item["foreign"] = the other UBE patch whose armor addon UBE races use for it."""
     items = {}
+    heads = set()
     for plugin, data, pfile, foreign in _all_armas():
         edid, m3, slots, _r, _a = arma_info(data)
         if not m3 or (slots and slots <= mp.HEAD_SLOTS):
+            if m3 and pfile:
+                heads.add(pfile)                 # a head piece of a mod not in the patch yet
             continue
         path = m3.replace("/", "\\")
         ube = path.lower().startswith("!ube\\")
@@ -466,6 +470,18 @@ def scan():
         it["kind"] = kind_of(it["base"], it["slots"], it["plugin"])
         out.append(it)
     out.sort(key=lambda i: (i["plugin"].lower(), i["base"].lower()))
+    # UBE races have no armor race, so they only wear armor addons that name them: a mod with nothing but head
+    # pieces (earrings, circlets, hats, or chokers the conversion found above the neck) never got into the patch
+    # and UBE characters saw none of it. Such mods join the patch as they are (nothing to convert). A mod with a
+    # piece still to convert joins once it is converted (else UBE characters would wear its 3BA shape), and one
+    # with an old LE mesh not at all (that mesh can crash the game).
+    left = {}
+    for i in out:
+        if i.get("file"):
+            left.setdefault(i["file"], set()).add(i["state"])
+    HEAD_ONLY.clear()
+    HEAD_ONLY.update(p for p in heads | set(left)
+                     if left.get(p, set()) <= {"head", "missing"} and (p in heads or "head" in left[p]))
     return out
 
 
@@ -616,7 +632,7 @@ def repoint(dry=False, items=None):
     import merged_patch
     if items is None:
         items = scan()
-    add = sorted({i["file"] for i in items if i.get("file") and i["state"] == "built"}, key=str.lower)
+    add = sorted({i["file"] for i in items if i.get("file") and i["state"] == "built"} | HEAD_ONLY, key=str.lower)
     add_f = sorted({i["foreign"] for i in items if i.get("foreign") and i["state"] == "built"}, key=str.lower)
     st = merged_patch.load_state()
     lines = [f"outfit mod(s) with converted pieces to add to the patch: {len(add)}"] if add else []
