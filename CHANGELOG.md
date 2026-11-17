@@ -1,6 +1,11 @@
 # Changelog
 
 ## Unreleased
+- **BodySlide started from the Tailor warns about projects it cannot see.** MO2 shows a program the mod folders as
+  they were when it started that program, and a BodySlide started from the Tailor gets the Tailor's view. Projects
+  converted since the Tailor was opened are new files there, so Batch Build skipped them without a word (pieces
+  converted again were built: their files existed already). The BodySlide button now says how many projects that
+  are and that BodySlide started from MO2 (after closing the Tailor) builds them.
 - **Vanilla gold and silver rings show on UBE characters.** UBE Vanilla Armor and Clothes gives these rings (and
   Dawnguard's Hawk Claw ring) a UBE armor addon whose !UBE mesh it does not ship, so a UBE character wearing one
   showed no ring at all, and the Tailor listed them as "Native UBE" and left them alone. Jewelry now counts as

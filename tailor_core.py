@@ -134,6 +134,15 @@ def mesh_exists(base):
     return any(r.resolve(base + s)[0] for s in mesh_files(base))
 
 
+def project_files():
+    """Names (lower case) of the BodySlide project files in the output mod."""
+    d = os.path.join(mp.BS, "SliderSets") if mp.BS else ""
+    try:
+        return {f.lower() for f in os.listdir(d) if f.lower().endswith(".osp")}
+    except OSError:
+        return set()
+
+
 def outdated(items):
     """Converted pieces whose project was made with an older conversion method (make_projects.METHOD)."""
     return [i for i in items if i.get("outdated")]

@@ -91,6 +91,7 @@ class App:
         self.busy = False
         self.stop_flag = False
         self.offered_fix = False
+        self.osp_at_start = None        # project files when MO2 started us (what a BodySlide started by us sees)
 
         # header: picture, title, live counters
         head = ttk.Frame(root, padding=(14, 12, 14, 6))
@@ -220,6 +221,16 @@ class App:
         """Open BodySlide (through MO2, so it sees the mods); when it is closed the Tailor scans again (watch)."""
         if tc.running("SkyrimSE.exe"):
             messagebox.showwarning("UBE Tailor", "The game is running. Close it first.")
+            return
+        # MO2 shows a program the mod folders as they were when it started the program, and BodySlide started from
+        # here gets our view: projects converted since then are new files it cannot see, so Batch Build skipped
+        # them without a word (the vanilla rings). Re-converted ones are fine (their files were there already).
+        new = tc.project_files() - self.osp_at_start if self.osp_at_start is not None and env.inside_mo2() else set()
+        if new and not messagebox.askyesno("UBE Tailor", (
+                f"{len(new)} project(s) were made since you opened the Tailor. A BodySlide started from here cannot "
+                "see them: MO2 shows it the files as they were when it started the Tailor, so Batch Build would skip "
+                "them.\n\nTo build them: close the Tailor, start BodySlide from MO2, Batch Build, then open the "
+                "Tailor again.\n\nStart BodySlide from here anyway (it builds everything else)?")):
             return
         ok, msg = env.launch_bodyslide()
         self.say(msg)
@@ -474,6 +485,8 @@ class App:
     # ------------------------------------------------------------ actions
     def do_scan(self):
         def work():
+            if self.osp_at_start is None:
+                self.osp_at_start = tc.project_files()
             try:
                 tc.settle_method(log=self.say)         # once: only pieces the new method changes are outdated
             except Exception as e:
