@@ -554,6 +554,26 @@ def write_tng_ini(records, log=print):
 
 
 # ---------------------------------------------------------------- records of one outfit mod
+MALE_OF = [((b"MOD3", b"MO3T", b"MO3S"), (b"MOD2", b"MO2T", b"MO2S")),     # third person
+           ((b"MOD5", b"MO5T", b"MO5S"), (b"MOD4", b"MO4T", b"MO4S"))]     # first person
+
+
+def male_as_female(pairs):
+    """UBE men wear the UBE body (the female mesh with male morphs), so a UBE armor addon gives men the female model,
+    as UBE's own armor patch does: MOD2/MO2T/MO2S become copies of MOD3/MO3T/MO3S (first person: MOD4.. of MOD5..).
+    Without it a man is invisible in an outfit with no male model, or wears the vanilla male mesh. A part with no
+    female model keeps its male one. pairs = [(type, data)] in record order; returns the new list."""
+    out = list(pairs)
+    for fem, male in MALE_OF:
+        if not any(t == fem[0] and zstr(x) for t, x in out):
+            continue
+        copy = [(male[fem.index(t)], x) for t, x in out if t in fem]
+        out = [(t, x) for t, x in out if t not in male]
+        i = next(i for i, (t, _x) in enumerate(out) if t == fem[0])
+        out[i:i] = copy
+    return out
+
+
 def mod_records(e, index, new_i, ids, ui, target, extra, converted):
     """(armo bytes, arma bytes, armo count, arma count) for one source plugin. Armors are copied from their winning
     override (e["win"]: balance patches stay), smart slots (e["strip"]) are removed from the armor, its UBE copies
@@ -609,7 +629,8 @@ def mod_records(e, index, new_i, ids, ui, target, extra, converted):
                             x = ("!UBE\\" + path).encode("cp1252", "replace") + b"\0"
                     else:
                         x = remap_sub(t, x, R, ARMA_FIDS)
-                    subs.append(tc._sub(t, x))
+                    subs.append((t, x))
+                subs = [tc._sub(t, x) for t, x in male_as_female(subs)]
                 subs += [tc._sub(b"MODL", struct.pack("<I", ui << 24 | r)) for r in extra]
                 done[a] = new_i << 24 | ids[f"{e['name'].lower()}|{a:06x}"]
                 arma_body += tc._rec(b"ARMA", done[a], fl, b"".join(subs))
@@ -708,6 +729,9 @@ def foreign_overrides(patch, converted, log=print):
             subs.append((t, x))
         if not changed:
             continue                              # the other patch's own record is right as it is
+        m2 = tc.mesh_path(next((zstr(x) for t, x in subrecords(f["data"]) if t == b"MOD2"), ""))
+        if m2.lower() == key:                     # that patch gave men the female model: so does the override
+            subs = male_as_female(subs)
         used = set()
 
         def note(fid, ms=f["ms"], name=f["patch"]):

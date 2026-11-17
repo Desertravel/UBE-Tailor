@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- **UBE men see their outfits.** A UBE man wears the UBE body (the female mesh shaped by male morphs), but the
+  patch's UBE armor addons kept the outfit's own male model: none at all for most outfit mods, so a male UBE
+  character in a converted outfit was invisible but for head, hands and feet; otherwise the vanilla male mesh. The
+  UBE copies now give men the converted female model too (third and first person), as UBE's own armor patch does.
+  On the test modpack: 2897 copies showed nothing on men and 5285 the vanilla male mesh, now all 8416 the UBE one.
+  Nothing else in the patch changes, and other races keep the mod's male model.
 - **Outfits follow male UBE bodies (optional).** Sliders imported into UBE's own "... Male" projects, such as LDD
   Male Shape Shifters for UBE 2.0 (in Outfit Studio: Slider > Import > Import OSD, then Save Project), share UBE's
   body data, and the Tailor now gives them to every outfit it converts, always off by default (female bodies and
