@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- **Outfits follow male UBE bodies (optional).** Sliders imported into UBE's own "... Male" projects, such as LDD
+  Male Shape Shifters for UBE 2.0 (in Outfit Studio: Slider > Import > Import OSD, then Save Project), share UBE's
+  body data, and the Tailor now gives them to every outfit it converts, always off by default (female bodies and
+  presets do not change). Without them a body armor had 6281 to 10399 points inside the body at the Shape Shifter /
+  Graves shapes; with them 227 to 309. Nothing changes when no such sliders are installed. Re-convert outfits made
+  before to get them.
 - **Health check: a plugin sorted below the patch.** UBE characters only see armor addons that name the UBE races,
   and the patch adds them to each armor. A load order sort (LOOT, MO2's Sort) had put a Synthesis patch between
   the UBE Tailor files, and its armor records, without those addons, won: 561 armors (rings, amulets, outfits)

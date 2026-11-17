@@ -124,6 +124,19 @@ class Ref:
             d = sl.find("Data")
             self.sliders[sl.get("name")] = (dict(sl.attrib), d.get("name") if d is not None else None)
         self.osd = read_osd(osd, len(self.verts))
+        # Optional extra sliders: other projects on the same UBE data (UBE's "... Male" projects) can carry sliders the
+        # user imported into them, e.g. LDD Male Shape Shifters for UBE 2.0 (Outfit Studio, Import OSD). Outfits get
+        # them too, so they follow a male UBE body. Always off by default: female bodies and presets never change.
+        self.extra = []
+        for other in root.iter("SliderSet"):
+            if other is ss or (other.findtext("DataFolder") or "").strip() != self.folder:
+                continue
+            for sl in other.findall("Slider"):
+                d, name = sl.find("Data"), sl.get("name")
+                dn = d.get("name") if d is not None else None
+                if name and name not in self.sliders and dn in self.osd:
+                    self.sliders[name] = (dict(sl.attrib, small="0", big="0"), dn)
+                    self.extra.append(name)
 
 
 def keep_crotch(hide, r):
