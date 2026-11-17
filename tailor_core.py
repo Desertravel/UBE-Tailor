@@ -438,7 +438,11 @@ def scan():
             it["by"] = handmade[it["base"].lower()][0]
         elif proj:
             it["state"] = "done" if it["ube_all"] else "built"
-        elif it["ube_any"]:
+        elif it["ube_any"] and (kind_of(it["base"], it["slots"], it["plugin"]) != "jewelry"
+                                or mesh_exists("!UBE\\" + it["base"])):
+            # a UBE mesh from another mod. For jewelry only when that mesh is really there: UBE Vanilla Armor and
+            # Clothes points the vanilla silver / gold rings at !UBE meshes it does not ship, so UBE races showed no
+            # ring at all. Without the mesh the ring is converted like any other; the Tailor's mesh has that path.
             it["state"] = "native"       # a UBE mesh from another mod (installed by the user): never touched
         elif db.get(it["set"], {}).get("head") and db[it["set"]].get("method", 0) >= mp.METHOD:
             it["state"] = "head"         # converting found it sits above the neck only

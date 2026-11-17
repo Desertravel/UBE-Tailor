@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- **Vanilla gold and silver rings show on UBE characters.** UBE Vanilla Armor and Clothes gives these rings (and
+  Dawnguard's Hawk Claw ring) a UBE armor addon whose !UBE mesh it does not ship, so a UBE character wearing one
+  showed no ring at all, and the Tailor listed them as "Native UBE" and left them alone. Jewelry now counts as
+  native UBE only when that UBE mesh really exists (loose or in a loaded archive); otherwise it is listed as not
+  converted, and converting it makes the very mesh the UBE patch points at (meshes\!UBE\Armor\AmuletsandRings\
+  SilverRing_1.nif ...). Convert, Batch Build, done.
 - **Rings, amulets and some armors fit where they belong.** Many rings (and some outfits) are made in the space of
   the bone they hang on: their points are stored around 0,0,0 and the skin data says where the game puts them. The
   Tailor read those points as if they were already in place, so it fitted a ring to the body near the feet and
