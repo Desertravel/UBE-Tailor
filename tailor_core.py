@@ -1121,6 +1121,50 @@ def crotch_cover(sets, ray=CROTCH_RAY, key="crotch", log=None):
     return out
 
 
+def _bone_space(path):
+    """True when a mesh has a shape that conversion method 3 treats differently from method 2: made in a bone's
+    space (its skin transform is not identity) or tied to one bone (kept rigid). Unknown counts as True."""
+    from nif_patch import SseNif
+    try:
+        if any(s["skin_xf"] is not None for s in SseNif(path).shapes):
+            return True
+        from nifly_env import NifFile
+        return any(mp._one_bone(s) for s in NifFile(path).shapes)
+    except Exception:
+        return True
+
+
+def settle_method(log=print):
+    """Method 3 changed only pieces with a bone-space or one-bone shape (rings, amulets, a few armors); for every
+    other piece it makes the very same files as method 2. So, once, each method-2 project whose source mesh has no
+    such shape is marked method 3, and only the pieces the new method changes show as made with an older Tailor.
+    Returns how many projects were marked."""
+    if mp.METHOD != 3:
+        return 0
+    db = load_db()
+    todo = [s for s, d in db.items() if isinstance(d, dict) and d.get("method") == 2 and d.get("base")]
+    if not todo:
+        return 0
+    log(f"Checking which of {len(todo)} pieces converted before need the new method (once)...")
+    same = 0
+    for k, s in enumerate(todo):
+        base = db[s]["base"]
+        files = [os.path.join(mp.WORK, "meshes", base + e) for e in mesh_files(base)] if mp.WORK else []
+        files = [f for f in files if os.path.isfile(f)]
+        if not files:                                  # no copy of the source here: the mod's own file
+            src = (db[s].get("src") or [""])[0]
+            files = [src] if src.lower().endswith(".nif") and os.path.isfile(src) else []
+        if files and not any(_bone_space(f) for f in files):
+            db[s]["method"] = 3
+            same += 1
+        if k % 500 == 499:
+            log(f"   {k + 1} of {len(todo)}")
+    if same:
+        save_db(db)
+    log(f"   {same} piece(s) come out the same with the new method; {len(todo) - same} need converting again")
+    return same
+
+
 def restore_crotch(log=print):
     """Pieces converted before 0.9.3 had the UBE vulva cut out of their body (make_projects.keep_crotch): take the
     crotch points out of the hidden-body zap of their projects (.osd, and .osd.orig of Fix clipping), once per piece.

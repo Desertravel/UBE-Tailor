@@ -191,21 +191,51 @@ def remap_vmad(x, R):
 
 
 _SHAPES = {}
+NAMES_CACHE = os.path.join(env.WORK, "tailor_shapes.json") if env.WORK else None
+
+
+def _shape_names(f):
+    """Shape names, in order, of a nif. Kept on disk by file time and size (tailor_shapes.json), so a start of the
+    Tailor does not open thousands of meshes again; save_shape_names() writes what is new."""
+    names = _SHAPES.get("names")
+    if names is None:
+        names = _SHAPES["names"] = {}
+        try:
+            with open(NAMES_CACHE, encoding="utf-8") as fh:
+                names.update(json.load(fh))
+        except (OSError, ValueError, TypeError):
+            pass
+    st = os.stat(f)
+    key = os.path.normcase(f)
+    hit = names.get(key)
+    if hit and hit[0] == st.st_mtime_ns and hit[1] == st.st_size:
+        return hit[2]
+    from nifly_env import NifFile
+    names[key] = [st.st_mtime_ns, st.st_size, [sh.name for sh in NifFile(f).shapes]]
+    _SHAPES["dirty"] = True
+    return names[key][2]
+
+
+def save_shape_names():
+    if not (_SHAPES.get("dirty") and NAMES_CACHE):
+        return
+    try:
+        with open(NAMES_CACHE + ".tmp", "w", encoding="utf-8") as fh:
+            json.dump(_SHAPES["names"], fh)
+        os.replace(NAMES_CACHE + ".tmp", NAMES_CACHE)
+        _SHAPES["dirty"] = False
+    except OSError:
+        pass                                        # only a cache: the next start reads the meshes again
 
 
 def built_shapes(path):
     """Shape names, in order, of the UBE mesh meshes/!UBE/<path> as the game loads it (the highest priority loose
-    file), or None. Cached by file time."""
-    for d in env.loose_dirs():
+    file), or None."""
+    for d in env.dirs_with(os.path.join("meshes", "!UBE")):
         f = os.path.join(d, "meshes", "!UBE", path)
         if os.path.isfile(f):
             try:
-                st = os.stat(f)
-                key = (os.path.normcase(f), st.st_mtime_ns, st.st_size)
-                if key not in _SHAPES:
-                    from nifly_env import NifFile
-                    _SHAPES[key] = [sh.name for sh in NifFile(f).shapes]
-                return _SHAPES[key]
+                return _shape_names(f)
             except Exception:
                 return None
     return None
@@ -226,12 +256,7 @@ def source_shapes(path):
     for f in cands:
         if os.path.isfile(f):
             try:
-                st = os.stat(f)
-                key = (os.path.normcase(f), st.st_mtime_ns, st.st_size)
-                if key not in _SHAPES:
-                    from nifly_env import NifFile
-                    _SHAPES[key] = [sh.name for sh in NifFile(f).shapes]
-                return _SHAPES[key]
+                return _shape_names(f)
             except Exception:
                 continue
     return None
@@ -826,6 +851,7 @@ def build(add=(), exclude=(), log=print, add_foreign=()):
     st["foreign"] = forder
     st["ids"] = new_ids
     save_state(st)
+    save_shape_names()
     return result
 
 

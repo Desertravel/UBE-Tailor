@@ -12,9 +12,29 @@
 - **One-bone jewelry stays one solid piece.** A shape its author tied 100% to one bone (a ring on a finger, a
   pendant on the neck) keeps that bone instead of getting the skin's weights, which spread a ring over the hand and
   three finger bones and bent it with every finger move. Its sliders follow that bone's part of the body.
-- Conversion method 3: projects made before are listed as outdated (re-convert to get the fixes; outfits without a
-  bone-space transform come out the same), and pieces an older version listed as head pieces are checked again at
-  their next conversion.
+- Conversion method 3, without re-converting everything: once, at the first start, the Tailor looks at the source
+  mesh of every piece converted before and lists as "made with an older Tailor" only the pieces the new method
+  changes (a shape in a bone's space or tied to one bone); all others come out byte-identical and stay done (on
+  the test modpack 2913 of 3346 pieces stay done, 433 to convert again). A skin transform within 0.01 units of
+  none (exporter rounding, seen on many armors) counts as none. Pieces an older version listed as head pieces are
+  checked again at their next conversion.
+- **The Tailor starts much faster.** Updating the patch at the start looked for every mesh in every mod folder of
+  the modpack (2000+ on the test modpack, a few hundred with meshes, ten with UBE meshes), read the mod list again
+  for each mesh and opened thousands of meshes to learn their part names. Now it only looks in the folders that
+  can hold the file, reads the mod list once and keeps the part names on disk (work\tailor_shapes.json, by file
+  time and size). Same patch, byte for byte: 98 s -> 12 s on the test modpack (the first start after the update
+  takes about 60 s to fill the name cache).
+- **Fix clipping no longer redoes every piece.** It skips pieces already fixed for the ticked presets, but the
+  window opened with every preset ticked, so any run that did not tick exactly the same presets as the last one
+  worked through all converted pieces again. The window now ticks the presets of the last run (and says so), and a
+  piece fixed for more presets than ticked counts as done.
+- **"Made with an older Tailor" and "Left out" follow Show.** These two states listed every type of piece whatever
+  Show said, so "Select shown" with Show "Jewelry & tails" ticked all clothing too, and a re-convert overwrote
+  pieces fixed with Fix clipping.
+- **Ticking is easier and Convert says why it did nothing.** A click anywhere on a piece's row ticks it (before, only
+  the small box in the tick column did). When nothing can be converted, the message says why: nothing ticked, the
+  ticked pieces are converted already (tick "Re-convert done ones"), or they are head pieces / native or hand-made
+  UBE / missing / old LE meshes.
 
 ## 0.9.3-beta (2026-11-15)
 - **No more hole at the crotch under bras and bikini tops.** The vulva of the UBE body is its partition 53, and the

@@ -378,11 +378,11 @@ def _fix_one(job):
 
 
 def done_for(db, sets, presets):
-    """The pieces already fixed (or found fine) for exactly these presets - the Tailor remembers them in the
-    database (db[set]["clip"]), so a second run only works on new or re-converted pieces (a new conversion makes a
-    new database entry without it)."""
-    key = sorted(presets)
-    return [s for s in sets if db.get(s, {}).get("clip") == key]
+    """The pieces already fixed (or found fine) for these presets, or for these and more - the Tailor remembers
+    them in the database (db[set]["clip"]), so a second run only works on new or re-converted pieces (a new
+    conversion makes a new database entry without it). A piece fixed for more presets fits these as well."""
+    want = set(presets)
+    return [s for s in sets if want <= set(db.get(s, {}).get("clip") or ())]
 
 
 def fix_many(sets, presets, workers=6, on=None, stop=None, write=True, again=False):

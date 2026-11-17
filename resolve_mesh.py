@@ -65,7 +65,7 @@ def _rank(lo, stem):
 class Resolver:
     def __init__(self):
         self.mods = enabled_mods()
-        self.dirs = [env.OVERWRITE] + [os.path.join(env.MODS, m) for m in self.mods] + [env.DATA]
+        self.dirs = env.dirs_with("meshes")      # a mod without a meshes folder cannot hold a loose mesh
         self._bsa_index = None
 
     def loose(self, rel):

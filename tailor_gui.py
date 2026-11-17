@@ -381,7 +381,14 @@ class App:
     def visible(self):
         text = self.text.get().lower()
         st = self.state.get()
-        pool = tc.left_out(self.items) if st == LEFT_OUT else tc.outdated(self.items) if st == OUTDATED else self.of_kind()
+        kind = self.of_kind()
+        # "left out" / "older Tailor" are judged on the whole list (a left-out piece is one of an outfit converted
+        # before), then cut to the type picked in Show like every other state
+        pool = kind
+        if st in (LEFT_OUT, OUTDATED):
+            keep = {i["base"].lower() for i in kind}
+            pool = [i for i in (tc.left_out(self.items) if st == LEFT_OUT else tc.outdated(self.items))
+                    if i["base"].lower() in keep]
         return [i for i in pool
                 if (st in (ALL, LEFT_OUT, OUTDATED) or tc.STATES[i["state"]] == st)
                 and (text in i["base"].lower() or text in i["plugin"].lower())]
@@ -430,7 +437,8 @@ class App:
 
     def on_click(self, ev):
         row = self.tree.identify_row(ev.y)
-        if not row or self.tree.identify_column(ev.x) != "#1":
+        # a piece ticks wherever its row is clicked; a mod row only in the tick column (its name opens / closes it)
+        if not row or (row.startswith("p:") and self.tree.identify_column(ev.x) != "#1"):
             return
         if row.startswith("p:"):
             kids = self.tree.get_children(row)
@@ -449,9 +457,27 @@ class App:
     def chosen(self, states):
         return [i for i in self.items if i["base"].lower() in self.checked and i["state"] in states]
 
+    def why_nothing(self):
+        """Why Convert found nothing to do among the ticked pieces, in words."""
+        ticked = [i for i in self.items if i["base"].lower() in self.checked]
+        if not ticked:
+            return ("No piece is ticked. Click a piece (or the box in the ✓ column) to tick it, or press "
+                    "'Select shown' to tick every piece in the list.")
+        c = Counter(i["state"] for i in ticked)
+        if not self.redo.get() and (c.get("built") or c.get("done")):
+            return (f"The {c.get('built', 0) + c.get('done', 0)} ticked piece(s) are converted already. To convert "
+                    "them again, tick 'Re-convert done ones' (next to Workers) and press Convert again.")
+        return ("None of the ticked pieces can be converted: " + ", ".join(
+            f"{v} {tc.STATES[k]}" for k, v in c.most_common()) + ". Head pieces need no UBE version, native and "
+            "hand-made UBE pieces are UBE already, and a missing or old LE mesh has to be fixed in its mod first.")
+
     # ------------------------------------------------------------ actions
     def do_scan(self):
         def work():
+            try:
+                tc.settle_method(log=self.say)         # once: only pieces the new method changes are outdated
+            except Exception as e:
+                self.say(f"Could not check the pieces converted before: {e}")
             try:
                 tc.restore_crotch(log=self.say)        # once per piece: projects made before 0.9.3 cut the vulva
             except Exception as e:
@@ -555,8 +581,7 @@ class App:
     def do_convert(self):
         sel = self.chosen(("pending", "built", "done") if self.redo.get() else ("pending",))
         if not sel:
-            messagebox.showinfo("UBE Tailor", f"Tick some pieces with state '{tc.STATES['pending']}' first, "
-                                              "or enable 'Re-convert finished ones'.")
+            messagebox.showinfo("UBE Tailor", self.why_nothing())
             return
         if tc.running("SkyrimSE.exe"):
             messagebox.showwarning("UBE Tailor", "The game is running. Close it first.")
@@ -830,8 +855,15 @@ class FixWindow:
         canvas.bind("<Leave>", lambda _e: canvas.unbind_all("<MouseWheel>"))
         win.bind("<Destroy>", lambda e: canvas.unbind_all("<MouseWheel>") if e.widget is win else None)
         self.picks = {}
+        # the presets of the last run, ticked again: pieces already fixed for them are skipped, so only new and
+        # re-converted pieces take time (other ticks make the Tailor check every piece again)
+        last = set(env.S.get("fix_presets") or ()) & set(presets)
+        if last:
+            ttk.Label(win, style="Sub.TLabel", wraplength=720, justify="left", text=(
+                "Ticked like your last run: pieces already fixed for these presets are skipped. Ticking another "
+                "preset makes every piece be checked again, which takes much longer.")).pack(anchor="w", pady=(0, 6))
         for k, name in enumerate(presets):
-            v = tk.BooleanVar(value=True)
+            v = tk.BooleanVar(value=name in last if last else True)
             self.picks[name] = v
             ttk.Checkbutton(rows, text=name, variable=v, command=self.refresh).grid(
                 row=k // 3, column=k % 3, sticky="w", padx=(0, 18), pady=2)
@@ -859,6 +891,8 @@ class FixWindow:
 
     def go(self):
         presets = self.chosen()
+        env.S["fix_presets"] = presets
+        env.save_settings(env.S)
         self.win.destroy()
         self.app.run_fix(self.sets, presets)
 

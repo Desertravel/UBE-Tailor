@@ -117,7 +117,8 @@ def _skin_xf(shape):
     R = np.array([g.rotation[i][:] for i in range(3)], dtype=np.float64)
     t = np.array(g.translation[:], dtype=np.float64)
     s = float(g.scale or 1.0)
-    if np.allclose(R, np.eye(3), atol=1e-6) and np.allclose(t, 0, atol=1e-6) and abs(s - 1) < 1e-6:
+    from nif_patch import near_identity
+    if near_identity(t, R, s):
         return None
     return t, R, s
 

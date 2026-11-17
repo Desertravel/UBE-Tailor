@@ -12,6 +12,13 @@ import numpy as np
 VF_FULLPREC = 0x400
 
 
+def near_identity(t, R, s):
+    """A skin transform that moves no point by more than about 0.01 units (rounding noise of the exporter, seen on
+    many armors): treated as none, so those pieces convert exactly as before."""
+    return (np.abs(np.asarray(t)).max() < 0.01 and np.abs(np.asarray(R) - np.eye(3)).max() < 1e-4
+            and abs(s - 1) < 1e-4)
+
+
 class SseNif:
     def __init__(self, path):
         self.path = path
@@ -105,7 +112,7 @@ class SseNif:
             return None
         f = struct.unpack_from("<13f", self.buf, self.block_ofs[data_bi])
         R, t, s = np.array(f[:9]).reshape(3, 3), np.array(f[9:12]), f[12] or 1.0
-        if np.allclose(R, np.eye(3), atol=1e-6) and np.allclose(t, 0, atol=1e-6) and abs(s - 1) < 1e-6:
+        if near_identity(t, R, s):
             return None
         return t, R, s
 

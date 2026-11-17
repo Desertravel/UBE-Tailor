@@ -187,10 +187,25 @@ def need_ready():
 
 
 # ---------------------------------------------------------------- the modpack's virtual file system
+_ML = {}
+
+
+def _modlist():
+    """modlist.txt, read again only when the file changes (the patch build asks for the mod folders per mesh)."""
+    p = os.path.join(PROFILE, "modlist.txt")
+    st = os.stat(p)
+    key = (os.path.normcase(p), st.st_mtime_ns, st.st_size)
+    if _ML.get("key") != key:
+        with open(p, encoding="utf-8", errors="replace") as f:
+            mods = [ln[1:].rstrip("\r\n") for ln in f if ln.startswith("+") and not ln.rstrip().endswith("_separator")]
+        _ML.clear()
+        _ML.update(key=key, mods=mods, dirs=[OVERWRITE] + [os.path.join(MODS, m) for m in mods] + [DATA], has={})
+    return _ML
+
+
 def enabled_mods():
     """Enabled mods, highest priority first (modlist.txt lists the highest priority first)."""
-    with open(os.path.join(PROFILE, "modlist.txt"), encoding="utf-8", errors="replace") as f:
-        return [ln[1:].rstrip("\r\n") for ln in f if ln.startswith("+") and not ln.rstrip().endswith("_separator")]
+    return list(_modlist()["mods"])
 
 
 def _hidden(name):
@@ -222,7 +237,19 @@ def load_order():
 
 def loose_dirs():
     """Folders whose files the game sees, highest priority first (overwrite, mods, then the game's Data)."""
-    return [OVERWRITE] + [os.path.join(MODS, m) for m in enabled_mods()] + [DATA]
+    return list(_modlist()["dirs"])
+
+
+def dirs_with(sub):
+    """loose_dirs() that have the folder sub (e.g. "meshes"): only they can hold a file under it, so lookups skip
+    the rest (a modpack has 2000+ mods, a few hundred with meshes, about ten with meshes/!UBE). Looked at again
+    at most every 20 s, so a folder BodySlide or MO2 makes meanwhile is found."""
+    import time
+    ml = _modlist()
+    hit = ml["has"].get(sub.lower())
+    if hit is None or time.time() - hit[0] > 20:
+        hit = ml["has"][sub.lower()] = (time.time(), [d for d in ml["dirs"] if os.path.isdir(os.path.join(d, sub))])
+    return list(hit[1])
 
 
 def find(rel, dirs=None):
