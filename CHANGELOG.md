@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+- **Crash at start on non-English Windows fixed** (`'NoneType' object has no attribute 'lower'`). The Tailor checks
+  whether BodySlide or the game is running with Windows' `tasklist`, which answers in the console's language and code
+  page. On a German (or French, ...) Windows its message has letters Python could not read, the answer came back
+  empty and the Tailor stopped before its first scan. It now reads that answer in the console's code page and never
+  fails on it. Thanks to Papierherz for finding it and the fix.
+
 ## 0.9.4-beta (2026-11-17)
 Rings and jewelry fit, a much faster start, the load order health check, head-only mods (earrings, circlets,
 wigs) on UBE characters, and outfits for male UBE characters. After updating: start the Tailor (it updates the

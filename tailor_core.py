@@ -66,12 +66,15 @@ def osp_of(base):
 
 
 def running(exe):
+    """True if a process with this file name runs. tasklist writes in the console's code page (German, French...
+    Windows: umlauts, accents), which Python's default decoding can fail on, leaving stdout None: decode leniently
+    (only the ASCII file name matters) and never fail."""
     try:
         out = subprocess.run(["tasklist", "/FI", f"IMAGENAME eq {exe}", "/NH"], capture_output=True, text=True,
-                             creationflags=0x08000000).stdout
-    except OSError:
+                             encoding="oem", errors="replace", creationflags=0x08000000).stdout
+    except (OSError, LookupError, ValueError):
         return False
-    return exe.lower() in out.lower()
+    return exe.lower() in (out or "").lower()
 
 
 # ---------------------------------------------------------------- database (heel flag, log line, QA per project)
