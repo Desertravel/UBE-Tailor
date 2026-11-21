@@ -68,9 +68,29 @@ def _shift_stb(xf, t):
     return out
 
 
-def copy_weights(nif_path, targets, refs, upos, log=None):
+def _steady(N, parts):
+    """Metal parts (make_projects.solid_parts): a solid part gets one weight set (its average), so the bones move it
+    as one piece; a big part gets its weights smoothed, so it bends softly instead of creasing like cloth."""
+    for idx, mode, ln in parts:
+        if mode == "solid":
+            N[idx] = N[idx].mean(0)
+        else:
+            W = N[idx]
+            m = np.where(ln >= 0, 1.0, 0.0)
+            for _ in range(SMOOTH_W):
+                avg = (W[np.maximum(ln, 0)] * m[..., None]).sum(1) / np.maximum(m.sum(1), 1)[:, None]
+                W = 0.5 * W + 0.5 * avg
+            N[idx] = W
+    return N
+
+
+SMOOTH_W = 6
+
+
+def copy_weights(nif_path, targets, refs, upos, log=None, solid=None):
     """Rewrite bone weights of shapes `targets` in nif_path. upos = reference vertex positions (one array per ref,
-    same order as refs, e.g. heel-posed feet). Returns {shape: (verts fully UBE-weighted, verts blended)}."""
+    same order as refs, e.g. heel-posed feet). solid = {shape: metal parts} that get steady weights (_steady).
+    Returns {shape: (verts fully UBE-weighted, verts blended)}."""
     bones, UW, stb, node = ref_weights(refs)
     U = np.vstack(upos)
     ube_set = set(bones)
@@ -147,6 +167,8 @@ def copy_weights(nif_path, targets, refs, upos, log=None):
         N = alpha[:, None] * C * (1 - keep)[:, None] + (1 - alpha)[:, None] * body_old
         if custom:
             N[:, custom] = O[:, custom]
+        if solid and solid.get(name):
+            N = _steady(N, solid[name])
         drop = np.argsort(-N, 1)[:, MAXB:]
         np.put_along_axis(N, drop, 0.0, 1)
         N[N < 1e-3] = 0.0

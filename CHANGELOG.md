@@ -1,6 +1,14 @@
 # Changelog
 
 ## Unreleased
+- **Steel no longer bends like cloth.** Metal shapes (the ones with a shine map: steel, iron, dwarven, ebony plate,
+  buckles, chain links) followed every body slider point by point, so a muscle preset gave the plates abs, veins
+  and creases. Now each metal part follows a smoothed version of the body's motion: it still grows and moves with
+  the body (fully solid plates sank into it everywhere), but without the fine relief; tiny parts (rivets, studs)
+  move as one solid piece. Their bone weights are smoothed the same way, so they bend softly instead of creasing.
+  On 123 TEWOBA pieces at 4 presets: 52% less relief on the steel after Fix clipping, for a little more clipping
+  that Fix clipping's hidden body covers (outfit points inside the body 550 -> 746). Conversion method 4: only
+  pieces with a metal shape show as made with an older Tailor.
 - **Fix clipping hides the body under the outfit.** Every converted body piece carries the UBE body inside it.
   Under tight fabric and plate, strong presets (muscle, curves, belly) pushed the skin through in small spots, the
   thing outfit makers fix by hand by removing ("zapping") the body under the piece. Fix clipping now does that for

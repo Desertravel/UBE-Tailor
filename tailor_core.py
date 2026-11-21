@@ -1166,16 +1166,30 @@ def _bone_space(path):
         return True
 
 
+def _has_metal(path):
+    """True when a mesh has a metal shape (method 4 makes its parts solid). Unknown counts as True."""
+    try:
+        from nifly_env import NifFile
+        return any(mp._metal(s) for s in NifFile(path).shapes)
+    except Exception:
+        return True
+
+
 def settle_method(log=print):
-    """Method 3 changed only pieces with a bone-space or one-bone shape (rings, amulets, a few armors); for every
-    other piece it makes the very same files as method 2. So, once, each method-2 project whose source mesh has no
-    such shape is marked method 3, and only the pieces the new method changes show as made with an older Tailor.
-    Returns how many projects were marked."""
-    if mp.METHOD != 3:
+    """Each method changes only some pieces; for every other piece it makes the very same files as the one before.
+    Method 3 changed pieces with a bone-space or one-bone shape (rings, amulets, a few armors), method 4 pieces with
+    a metal shape. So, once, each older project whose source mesh has none of what the newer methods change is
+    marked with the current method, and only the pieces they really change show as made with an older Tailor (and
+    head-piece verdicts, which method 4 does not touch, stay). Returns how many projects were marked."""
+    if mp.METHOD != 4:
         return 0
     db = load_db()
-    todo = [s for s, d in db.items() if isinstance(d, dict) and d.get("method") == 2 and d.get("base")]
+    todo = [s for s, d in db.items() if isinstance(d, dict) and d.get("method") in (2, 3) and d.get("base")]
+    for s, d in db.items():                            # a head-piece verdict of method 3 holds for method 4
+        if isinstance(d, dict) and d.get("head") and d.get("method") == 3:
+            d["method"] = 4
     if not todo:
+        save_db(db)
         return 0
     log(f"Checking which of {len(todo)} pieces converted before need the new method (once)...")
     same = 0
@@ -1186,13 +1200,12 @@ def settle_method(log=print):
         if not files:                                  # no copy of the source here: the mod's own file
             src = (db[s].get("src") or [""])[0]
             files = [src] if src.lower().endswith(".nif") and os.path.isfile(src) else []
-        if files and not any(_bone_space(f) for f in files):
-            db[s]["method"] = 3
+        if files and not any(_has_metal(f) or (db[s].get("method") == 2 and _bone_space(f)) for f in files):
+            db[s]["method"] = 4
             same += 1
         if k % 500 == 499:
             log(f"   {k + 1} of {len(todo)}")
-    if same:
-        save_db(db)
+    save_db(db)
     log(f"   {same} piece(s) come out the same with the new method; {len(todo) - same} need converting again")
     return same
 

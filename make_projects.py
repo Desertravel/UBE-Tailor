@@ -57,7 +57,8 @@ NECK_Z = 105.0
 #       heel-posed stockings / pantyhose (pieces without the feet slot)
 #   3 = 2026-11-16: pieces made in a bone's space (rings, some armors) read where the game shows them; one-bone
 #       pieces keep their author's weights. Head-piece verdicts of older versions are checked again.
-METHOD = 3
+#   4 = 2026-11-21: metal shapes (shine map) move as solid parts with the body sliders and get steady weights.
+METHOD = 4
 
 
 class HeadPiece(Exception):
@@ -176,6 +177,91 @@ FOR_OUTFITS = [  # (slider, bone name parts, facing, push at 100)
     ("BiggerFeet_ForOutfits", ("Foot", "Toe"), None, 0.8),
 ]
 FOLLOW_MATCH = 0.6   # outfit points whose bones match the body under them less than this follow their own bones' body
+# Metal and the body sliders: fully solid plates stop bending but no longer grow with the body (on 123 TEWOBA pieces
+# at 4 presets the outfit points inside the body went 5,110 -> 64,086). Smoothing the motion keeps the growth and
+# drops the fine relief (muscles, veins); these values took 52% of the relief off the steel after Fix clipping for
+# 550 -> 746 points inside the body and 2,332 -> 3,091 skin points through it (the rest of the clipping is hidden).
+RIGID_SIZE = 3.0     # a metal part up to this size moves as one solid piece with the body sliders (studs, rivets)
+RIGID_SMOOTH = 4     # a bigger one follows them smoothed this many rounds: it grows with the body, without relief
+
+
+def _metal(shape):
+    """A shape with an environment (shine) map is metal in Skyrim: steel, iron, dwarven, ebony plate, buckles..."""
+    t = shape.textures
+    return bool(t.get("EnvMap") or t.get("EnvMask"))
+
+
+def neighbours(nv, F):
+    """Per point the points it shares a triangle with (index array padded with -1)."""
+    e = np.vstack([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]])
+    e = np.unique(np.vstack([e, e[:, ::-1]]), axis=0)
+    counts = np.bincount(e[:, 0], minlength=nv)
+    out = -np.ones((nv, max(int(counts.max()) if len(counts) else 1, 1)), dtype=np.int64)
+    starts = np.cumsum(counts) - counts
+    out[e[:, 0], np.arange(len(e)) - starts[e[:, 0]]] = e[:, 1]
+    return out
+
+
+def solid_parts(P, F):
+    """The connected parts of a metal shape: [(point indices, "solid" or "smooth", local neighbours)]. Steel must
+    not bend like cloth with the body sliders (a muscle preset would give plates abs and veins): a small part moves
+    as one piece (rotation, shift, even scale), a big one follows a smoothed version of the motion."""
+    nbr = neighbours(len(P), F) if len(F) else -np.ones((len(P), 1), dtype=np.int64)
+    lab = -np.ones(len(P), dtype=np.int64)
+    out = []
+    for start in range(len(P)):
+        if lab[start] >= 0:
+            continue
+        stack, comp = [start], []
+        lab[start] = len(out)
+        while stack:
+            v = stack.pop()
+            comp.append(v)
+            for w in nbr[v]:
+                if w >= 0 and lab[w] < 0:
+                    lab[w] = len(out)
+                    stack.append(w)
+        idx = np.array(sorted(comp), dtype=np.int64)
+        if len(idx) < 4:
+            out.append((idx, "skip", None))
+            continue
+        size = float(np.linalg.norm(P[idx].max(0) - P[idx].min(0)))
+        loc = {g: i for i, g in enumerate(idx)}
+        ln = np.array([[loc.get(w, -1) if w >= 0 else -1 for w in nbr[g]] for g in idx], dtype=np.int64)
+        out.append((idx, "solid" if size <= RIGID_SIZE else "smooth", ln))
+    return [p for p in out if p[1] != "skip"]
+
+
+def _similar(P, Q):
+    """Q's best fit by P moved as one piece (rotation, shift, uniform scale)."""
+    mp_, mq = P.mean(0), Q.mean(0)
+    A, B = P - mp_, Q - mq
+    U, S, Vt = np.linalg.svd(A.T @ B)
+    D = np.diag([1.0, 1.0, np.sign(np.linalg.det(U @ Vt)) or 1.0])
+    R = (U @ D @ Vt).T
+    s = float((S * np.diag(D)).sum() / max((A * A).sum(), 1e-12))
+    return s * A @ R.T + mq
+
+
+def _smooth(D, nbr, rounds):
+    for _ in range(rounds):
+        m = np.where(nbr >= 0, 1.0, 0.0)
+        avg = (D[np.maximum(nbr, 0)] * m[..., None]).sum(1) / np.maximum(m.sum(1), 1)[:, None]
+        D = 0.5 * D + 0.5 * avg
+    return D
+
+
+def rigidify(P, diff, parts):
+    """A metal shape's slider data (diff at rest points P) made solid per part (solid_parts)."""
+    if not parts:
+        return diff
+    out = diff.copy()
+    for idx, mode, ln in parts:
+        if mode == "solid":
+            out[idx] = _similar(P[idx], P[idx] + diff[idx]) - P[idx]
+        else:
+            out[idx] = _smooth(diff[idx], ln, RIGID_SMOOTH)
+    return out
 
 
 def _vertex_normals(V, F):
@@ -514,6 +600,15 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
             raise ValueError("UBE feet shape is not skinned")
         nif.set_positions(fs, Vh)
     nif.save(nif_path)
+    tris_of = {rename.get(x.name, x.name): np.array(x.tris, dtype=np.int64) for x in src_nif.shapes}
+    # metal shapes (shine map): their parts move as solid pieces with the sliders and get steady weights
+    metal = {rename.get(x.name, x.name) for x in src_nif.shapes if _metal(x)} - bodies
+    solid = {n: solid_parts(conformed[n], tris_of[n]) for n in sorted(metal)
+             if n in conformed and n in tris_of and len(tris_of[n]) and tris_of[n].max() < len(conformed[n])}
+    if solid:
+        n_s = sum(m == "solid" for p in solid.values() for _i, m, _l in p)
+        n_m = sum(m == "smooth" for p in solid.values() for _i, m, _l in p)
+        log(f"   metal: {len(solid)} shape(s), {n_s} solid part(s), {n_m} big smoothed part(s)")
     # bone weights: copy the UBE body/feet/hands weights onto the conformed outfit shapes
     with open(nif_path, "rb") as f:
         before_weights = f.read()
@@ -523,7 +618,8 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
     if rigid:
         log(f"   weights: kept the author's one-bone weights on {', '.join(sorted(rigid))}")
     ube_weights.copy_weights(nif_path, [s["name"] for s in shapes if s["name"] not in bodies | rigid], refs,
-                             [Vh if Vh is not None and r is feet else r.verts for r in refs], log=log)
+                             [Vh if Vh is not None and r is feet else r.verts for r in refs], log=log,
+                             solid={n: p for n, p in solid.items() if n not in rigid})
     # HDT-SMP safety net: a bone the physics XML does not declare falls to the floor and drags the skeleton with it.
     # Whatever the weight copy did, the result may not have a falling bone the outfit's own source did not have.
     if smp_check.has_smp(nif_path):
@@ -545,7 +641,6 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
             entries.append((s["name"] + ZAP, idx, np.tile([0.0, 1.0, 0.0], (len(idx), 1))))
             zap_rows.append((s["name"] + ZAP, s["name"]))
     Ec = E + field(E) if len(E) else E
-    tris_of = {rename.get(x.name, x.name): np.array(x.tris, dtype=np.int64) for x in src_nif.shapes}
     for r in use:
         olds = [n for n in bodies if r.partition in parts_of.get(n, set()) and n in conformed]
         if r.key in ("feet", "hands") and olds:
@@ -630,7 +725,7 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
             for n in outfit:
                 nn = near[n](UN)
                 nn /= np.linalg.norm(nn, axis=1, keepdims=True) + 1e-12
-                diff = push * near[n](area)[:, None] * nn
+                diff = rigidify(conformed[n], push * near[n](area)[:, None] * nn, solid.get(n))
                 keep = np.nonzero(np.abs(diff).max(1) > 1e-3)[0]
                 if len(keep):
                     entries.append((n + name, keep, stored(n, diff[keep])))
@@ -643,7 +738,7 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
             D = np.vstack(parts)
             if np.abs(D).max() > 0:
                 for n in outfit:
-                    diff = near[n](D)
+                    diff = rigidify(conformed[n], near[n](D), solid.get(n))
                     mag = np.abs(diff).max(1)
                     keep = np.nonzero(mag > 1e-5)[0]
                     if len(keep) and mag.max() > 1e-3:
