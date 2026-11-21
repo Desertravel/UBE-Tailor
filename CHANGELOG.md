@@ -1,6 +1,15 @@
 # Changelog
 
 ## Unreleased
+- **Fix clipping hides the body under the outfit.** Every converted body piece carries the UBE body inside it.
+  Under tight fabric and plate, strong presets (muscle, curves, belly) pushed the skin through in small spots, the
+  thing outfit makers fix by hand by removing ("zapping") the body under the piece. Fix clipping now does that for
+  the presets you tick: a body point is hidden only where an opaque outfit surface lies along the skin right over
+  it at every one of them. A band of skin along every edge stays (necklines, openings, cut-outs), and lace, mesh
+  and other see-through shapes never hide anything. Only the project's hidden-body list changes (the conversion's
+  data stays in .osd.orig); run Batch Build afterwards. Pieces fixed before are done again once. On 80 bikini
+  armors (TAWOBA, TEWOBA, Caenarvon...) at 4 presets including ABS EX: 94,007 body points hidden, skin points
+  through the outfit 22,628 -> 14,420, outfit points inside the body 14,975 -> 362.
 - **Crash at start on non-English Windows fixed** (`'NoneType' object has no attribute 'lower'`). The Tailor checks
   whether BodySlide or the game is running with Windows' `tasklist`, which answers in the console's language and code
   page. On a German (or French, ...) Windows its message has letters Python could not read, the answer came back

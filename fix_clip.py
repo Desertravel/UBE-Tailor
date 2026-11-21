@@ -92,7 +92,8 @@ class Project:
     """A converted piece's BodySlide project: outfit shapes, their slider data (dense, per slider) and the cases.
     Reads the original slider data (.osd.orig) when the piece was fixed before, so fixes never stack."""
 
-    def __init__(self, set_name, refs):
+    def __init__(self, set_name, refs, current=False):
+        """current=True reads the slider data as it is now (after a fix) instead of the conversion's."""
         self.osp = os.path.join(mp.BS, "SliderSets", mp.safe(set_name) + ".osp")
         self.root = ET.parse(self.osp).getroot()
         ss = self.root.find("SliderSet")
@@ -111,7 +112,7 @@ class Project:
                 continue
             self.rest[s.name] = body_points(s)
             self.shape_of[s.name] = s
-        self.osd = tc._osd_sparse(self.orig if os.path.isfile(self.orig) else self.osd_path)
+        self.osd = tc._osd_sparse(self.orig if os.path.isfile(self.orig) and not current else self.osd_path)
         self.sliders = []            # (slider attributes, {shape: osd entry name})
         for sl in ss.findall("Slider"):
             if sl.get("zap") == "true" or sl.get("uv") == "true":
@@ -295,6 +296,7 @@ def fix(set_name, presets, refs, heel=False, surfaces=None, log=None, write=True
         report["after"] = report["before"]
         for p in presets:
             report["presets"][p]["after"] = report["presets"][p]["before"]
+        _hide(set_name, presets, refs, heel, pvs, write, report)
         return _done(report, set_name, log)
     for shape, rest, cols, St, V, near, u, sd, nn in plan:   # u: push along the rest body normal
         st0 = _stats(sd, case_preset, presets)
@@ -347,13 +349,31 @@ def fix(set_name, presets, refs, heel=False, surfaces=None, log=None, write=True
             pr.save()
         else:
             pr.restore()
+    _hide(set_name, presets, refs, heel, pvs, write, report)
     return _done(report, set_name, log)
+
+
+def _hide(set_name, presets, refs, heel, pvs, write, report):
+    """After the slider data: hide the UBE body where the outfit covers it at every chosen preset (hide_body).
+    report["hidden"] = body points hidden, report["through"] = body points through the outfit at any preset
+    (before, after)."""
+    import hide_body
+    report["hidden"], report["through"] = 0, (0, 0)
+    try:
+        hb = hide_body.measure(set_name, presets, refs, heel, pvs=pvs)
+    except Exception as e:                       # never fail a fix over this: the piece just keeps its body
+        report["hide_error"] = repr(e)
+        return
+    report["hidden"], report["through"] = len(hb["hide"]), hb["through"]
+    if write:
+        hide_body.apply(set_name, refs, hb["hide"])
 
 
 def _done(report, set_name, log):
     if log:
         log(f"   {set_name[11:]}: points inside at the chosen presets {report['before']} -> {report['after']}"
-            f"  ({report['state']})")
+            f"  ({report['state']}); body hidden under the outfit: {report.get('hidden', 0)} points, through the "
+            f"outfit {report.get('through', (0, 0))[0]} -> {report.get('through', (0, 0))[1]}")
     return report
 
 
@@ -380,9 +400,12 @@ def _fix_one(job):
 def done_for(db, sets, presets):
     """The pieces already fixed (or found fine) for these presets, or for these and more - the Tailor remembers
     them in the database (db[set]["clip"]), so a second run only works on new or re-converted pieces (a new
-    conversion makes a new database entry without it). A piece fixed for more presets fits these as well."""
+    conversion makes a new database entry without it). A piece fixed for more presets fits these as well. A piece
+    whose hidden body (hide_body) was measured with an older rule, or never, is done again."""
+    import hide_body
     want = set(presets)
-    return [s for s in sets if want <= set(db.get(s, {}).get("clip") or ())]
+    return [s for s in sets if want <= set(db.get(s, {}).get("clip") or ())
+            and db.get(s, {}).get("hb") == hide_body.VERSION]
 
 
 def fix_many(sets, presets, workers=6, on=None, stop=None, write=True, again=False):
@@ -411,6 +434,9 @@ def fix_many(sets, presets, workers=6, on=None, stop=None, write=True, again=Fal
                     else:
                         db[name].pop("fixed", None)
                     db[name]["clip"] = sorted(presets)
+                    if "hide_error" not in rep:
+                        import hide_body
+                        db[name]["hb"] = hide_body.VERSION
                     qa = db[name].get("qa")
                     if qa and picked in rep["presets"] and qa.get("preset") == picked:
                         a = rep["presets"][picked]["after"]

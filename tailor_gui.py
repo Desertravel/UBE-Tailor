@@ -703,6 +703,10 @@ class App:
                     self.say(f"   failed: {name[11:]}: {err}")
                 elif rep:
                     n[rep["state"]] += 1
+                    n["hidden"] += rep.get("hidden", 0)
+                    n["hid_pieces"] += bool(rep.get("hidden"))
+                    n["through0"] += rep.get("through", (0, 0))[0]
+                    n["through1"] += rep.get("through", (0, 0))[1]
                     for k in ("before", "after"):
                         tot[k] += rep[k]
                         worst[k][max(v[k]["grade"] for v in rep["presets"].values())] += 1
@@ -721,7 +725,11 @@ class App:
             for k in ("before", "after"):
                 self.say(f"   worst grade per piece {k}: " + ", ".join(
                     f"{tc.GRADES[g]} {c}" for g, c in sorted(worst[k].items())))
-            if n["fixed"]:
+            if n["hidden"]:
+                self.say(f"   body hidden under the outfit (it cannot poke through there): {n['hidden']:,} points in "
+                         f"{n['hid_pieces']} piece(s); skin through the outfit at your presets "
+                         f"{n['through0']:,} -> {n['through1']:,} points")
+            if n["fixed"] or n["hidden"]:
                 self.say("Next: press BodySlide -> group 'UBE Auto Conversions' -> your preset -> tick Build Morphs -> "
                          "Batch Build again, so the game gets the fixed pieces. Close BodySlide when it is done - "
                          "the Tailor then scans by itself.")
@@ -848,7 +856,9 @@ class FixWindow:
         ttk.Label(win, style="Sub.TLabel", wraplength=720, justify="left", text=(
             f"Changes how {what} follow the body sliders, so they stay outside the UBE body at every preset ticked "
             "below (the shape at rest stays the same). A piece is only changed where that helps without making it "
-            "worse at any of these presets; pieces that already fit them are left alone. Keep all your presets "
+            "worse at any of these presets; pieces that already fit them are left alone. It also hides the body "
+            "where the outfit covers it at all these presets (a band of skin along every edge stays, see-through "
+            "fabric never hides it), so the skin cannot poke through there. Keep all your presets "
             "ticked: fixing for a few makes the others worse. Afterwards run Batch Build in BodySlide again. "
             "Experimental - check the pieces in game.")).pack(anchor="w", pady=(0, 8))
         bot = ttk.Frame(win)
