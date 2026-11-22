@@ -415,7 +415,10 @@ COVER_MIN = 15                       # outfit points on those bones that count a
 CROTCH = {52: 1 << 22, 53: 1 << 23}  # UBE / TNG hide the vulva for anything on these (underwear, "vagina cover")
 CROTCH_MIN = 0.6                     # share of the vulva the piece's fabric must hide to keep the slot
 FREE_SLOT = 1 << 30                  # slot 60: given to a piece that would be left without any slot
-FREE_LEG = 1 << 24                   # slot 54 (leg, secondary) for a leg piece that lost 53; UBE uses neither
+# Slot for a leg piece that lost 53. It was 54 ("leg, secondary"), but UBE_AllRace.esp's 00UBE_HideUnderwear armor
+# sits on 54 and UBE keeps it on its characters, so a thigh piece moved there knocked it off and was taken off
+# itself (TEWOBA Ebony Bikini Thigh A/B could not be worn). 60 is used by few outfits and by nothing of UBE or TNG.
+FREE_LEG = FREE_SLOT
 SLOT_NAMES = {**SMART, **CROTCH}
 
 
@@ -468,7 +471,7 @@ def smart_slots(e, armo_data, converted):
                     out["arma"][a] = out["arma"].get(a, 0) | CROTCH[53]
     for a, mask in out["arma"].items():
         if not _bod(armas[a]) & ~mask & 0xFFFFFFFF:  # it must keep some slot to be shown at all: leg pieces
-            out["arma_add"][a] = FREE_LEG if mask & CROTCH[53] else FREE_SLOT    # 53 -> 54, the rest -> 60
+            out["arma_add"][a] = FREE_LEG if mask & CROTCH[53] else FREE_SLOT    # 60 either way (see FREE_LEG)
     for armo_obj, arma_objs in e["todo"]:
         bod = _bod(armo_data[armo_obj])
         mask = 0
@@ -591,7 +594,7 @@ def mod_records(e, index, new_i, ids, ui, target, extra, converted):
     # body in the mesh (the vulva) is not drawn when the piece is not on 53 - a hole under every bra / bikini top.
     # Only when a piece of the outfit itself stays on 53 (smart slots off) do the body pieces go without it: two
     # meshes on one slot and the game shows only one of them. Counted with the slots the copies really get (smart
-    # slots move garters, stockings, cuisses... from 53 to 54), never from the original records alone; an addon no
+    # slots move garters, stockings, cuisses... from 53 to 60), never from the original records alone; an addon no
     # armor of the mod uses (a leftover in the plugin), or one without a female mesh, has nothing to hide.
     worn = {struct.unpack_from("<I", x)[0] & 0xFFFFFF for sig, fid, d, _fl in e["recs"] if sig == b"ARMO"
             and fid >> 24 >= n for t, x in subrecords(d) if t == b"MODL" and len(x) == 4
@@ -710,7 +713,7 @@ def override_records():
 def foreign_overrides(patch, converted, log=print):
     """Entries for one other UBE patch: its UBE armor addons whose mesh is built as UBE (MOD3 -> !UBE). Their body
     pieces keep slot 53 (the UBE vulva is partition 53 of the mesh and shows only on that slot); a slot-53 piece of
-    the outfit that the Tailor converts moves to 54 instead (smart_slots). Returns [dict(key, ms, name, data, flags,
+    the outfit that the Tailor converts moves to 60 instead (smart_slots). Returns [dict(key, ms, name, data, flags,
     new, masters)] - masters = the plugins the record refers to (only those become masters of UBE Tailor.esp)."""
     found = [f for f in tc.foreign_armas() if f["patch"].lower() == patch.lower()]
     out = []
