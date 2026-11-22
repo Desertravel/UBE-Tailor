@@ -9,8 +9,9 @@
 - **Thigh pieces that could not be worn on UBE characters.** A leg piece that leaves slot 53 (so the UBE vulva and the
   body pieces keep it) was moved to 54, thought free - but UBE's own 00UBE_HideUnderwear armor sits on 54 and UBE
   keeps it on its characters, so putting the piece on took it off again (TEWOBA Ebony Bikini Thigh A / B). Such
-  pieces now go to 60, which few outfits and nothing of UBE or TNG use. Press Update patch; no conversion or
-  BodySlide build needed.
+  pieces, and pieces that were on 54 in the outfit itself (stockings, garters, thigh bands: Witch, Cheongsam), now
+  take a spare slot no armor of the same mod uses (60, else 48, 55, 59, 47, 44), one per slot they leave, so pieces
+  that were on 52, 53 and 54 can still be worn together. Press Update patch; no conversion or BodySlide build needed.
 - **BodySlide button: no Yes/No that is always No.** After converting, a BodySlide started from the Tailor cannot see
   the new projects (MO2 shows it the files as they were when it started the Tailor), and the button asked whether to
   start it anyway. Now it just says what to do (close the Tailor, F5 in MO2, BodySlide from MO2, Batch Build), and the

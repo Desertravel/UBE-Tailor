@@ -415,11 +415,19 @@ COVER_MIN = 15                       # outfit points on those bones that count a
 CROTCH = {52: 1 << 22, 53: 1 << 23}  # UBE / TNG hide the vulva for anything on these (underwear, "vagina cover")
 CROTCH_MIN = 0.6                     # share of the vulva the piece's fabric must hide to keep the slot
 FREE_SLOT = 1 << 30                  # slot 60: given to a piece that would be left without any slot
-# Slot for a leg piece that lost 53. It was 54 ("leg, secondary"), but UBE_AllRace.esp's 00UBE_HideUnderwear armor
-# sits on 54 and UBE keeps it on its characters, so a thigh piece moved there knocked it off and was taken off
-# itself (TEWOBA Ebony Bikini Thigh A/B could not be worn). 60 is used by few outfits and by nothing of UBE or TNG.
-FREE_LEG = FREE_SLOT
+# Slot 54 is not free: UBE_AllRace.esp's 00UBE_HideUnderwear armor sits on it and UBE keeps it on its characters, so
+# a piece on 54 knocked it off and was taken off itself (TEWOBA Ebony Bikini Thigh A/B, Witch stockings). Leg pieces
+# that leave 53 used to go there; now they, and the pieces on 54, take a spare slot (FREE_CHOICES).
+UBE_HIDE = 1 << 24
+# Slots a piece that must leave 53 / 54 may take, best first; the first one no armor of the same mod uses is taken
+# (two pieces of one outfit on one slot cannot be worn together). 50 / 51 (decapitation) and 61 (FX) never.
+FREE_CHOICES = (1 << 30, 1 << 18, 1 << 25, 1 << 29, 1 << 17, 1 << 14)     # 60, 48, 55, 59, 47, 44
 SLOT_NAMES = {**SMART, **CROTCH}
+
+
+def free_slot(used):
+    """The first of FREE_CHOICES not in `used` (the slot bits of every armor of the mod); 60 when all are."""
+    return next((b for b in FREE_CHOICES if not used & b), FREE_SLOT)
 
 
 def smart_slots(e, armo_data, converted):
@@ -469,9 +477,26 @@ def smart_slots(e, armo_data, converted):
                 bod = _bod(armas[a])
                 if not bod & 4 and bod & CROTCH[53]:
                     out["arma"][a] = out["arma"].get(a, 0) | CROTCH[53]
+    # UBE keeps its 00UBE_HideUnderwear armor (UBE_AllRace.esp) on slot 54 on its characters: a piece on 54 knocked
+    # it off and was taken off itself - thigh bands, stockings and garters could not be worn. They leave 54.
+    for _o, al in e["todo"]:
+        for a in al:
+            if _bod(armas[a]) & UBE_HIDE:
+                out["arma"][a] = out["arma"].get(a, 0) | UBE_HIDE
+    used = 0                                         # every slot the mod's own armors take
+    for sig, fid, d, _fl in e["recs"]:
+        if sig == b"ARMO" and fid >> 24 >= n:
+            used |= _bod(d)
+    # one spare slot per slot left, so pieces that were on 52, 53 and 54 can still be worn together
+    spares = {}
+    for bit in (CROTCH[53], UBE_HIDE, CROTCH[52]):
+        spares[bit] = free_slot(used | sum(spares.values()))
+
+    def spare(mask):
+        return next((spares[b] for b in spares if mask & b), spares[CROTCH[53]])
     for a, mask in out["arma"].items():
         if not _bod(armas[a]) & ~mask & 0xFFFFFFFF:  # it must keep some slot to be shown at all: leg pieces
-            out["arma_add"][a] = FREE_LEG if mask & CROTCH[53] else FREE_SLOT    # 60 either way (see FREE_LEG)
+            out["arma_add"][a] = spare(mask)
     for armo_obj, arma_objs in e["todo"]:
         bod = _bod(armo_data[armo_obj])
         mask = 0
@@ -479,7 +504,7 @@ def smart_slots(e, armo_data, converted):
             had = [a for a in arma_objs if _bod(armas[a]) & bit]
             if bod & 4 and bod & bit and had and all(out["arma"].get(a, 0) & bit for a in had):
                 mask |= bit
-        for s, bit in CROTCH.items():
+        for s, bit in {**CROTCH, 54: UBE_HIDE}.items():
             had = [a for a in arma_objs if _bod(armas[a]) & bit]
             if bod & bit and had and all(out["arma"].get(a, 0) & bit for a in had):
                 mask |= bit
@@ -489,7 +514,7 @@ def smart_slots(e, armo_data, converted):
         for a in arma_objs:
             add |= out["arma_add"].get(a, 0)
         if mask and not bod & ~mask & 0xFFFFFFFF and not add:
-            add = FREE_LEG if mask & CROTCH[53] else FREE_SLOT
+            add = spare(mask)
         if add:
             out["armo_add"][armo_obj] = add
     return out
