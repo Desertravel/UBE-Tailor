@@ -726,7 +726,8 @@ class App:
                     n["through1"] += rep.get("through", (0, 0))[1]
                     for k in ("before", "after"):
                         tot[k] += rep[k]
-                        worst[k][max(v[k]["grade"] for v in rep["presets"].values())] += 1
+                        if rep["presets"]:
+                            worst[k][max(v[k]["grade"] for v in rep["presets"].values())] += 1
                     if rep["state"] == "fixed":
                         g0 = max(v["before"]["grade"] for v in rep["presets"].values())
                         g1 = max(v["after"]["grade"] for v in rep["presets"].values())
@@ -738,6 +739,9 @@ class App:
             self.say(f"Fix clipping: {n['fixed']} fixed, {n['fine']} already fit every preset, {n['unchanged']} "
                      f"could not be improved without harm (left as they were), {n['failed']} failed  "
                      f"({time.time() - t0:.0f} s)" + ("  - stopped" if self.stop_flag else ""))
+            if n["squeeze"]:
+                self.say(f"   {n['squeeze']} squeeze outfit(s) (latex, corsets that press the body) left as converted: "
+                         "fixing them would push the pressed outfit back out")
             self.say(f"   points inside, all chosen presets together: {tot['before']:,} -> {tot['after']:,}")
             for k in ("before", "after"):
                 self.say(f"   worst grade per piece {k}: " + ", ".join(

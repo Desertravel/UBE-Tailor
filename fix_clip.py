@@ -115,6 +115,10 @@ class Project:
             self.shape_of[s.name] = s
         self.osd = tc._osd_sparse(self.orig if os.path.isfile(self.orig) and not current else self.osd_path)
         self.sliders = []            # (slider attributes, {shape: osd entry name})
+        # squeeze (make_projects.squeeze_body): the outfit's own slider presses the UBE body inside it. The body
+        # surfaces here do not know it, so they would push the pressed outfit back out: such pieces stay as made.
+        self.squeeze = any(d.get("local") == "true" and d.get("target") in ref_names
+                           for sl in ss.findall("Slider") if sl.get("zap") != "true" for d in sl.findall("Data"))
         for sl in ss.findall("Slider"):
             if sl.get("zap") == "true" or sl.get("uv") == "true":
                 continue
@@ -259,6 +263,10 @@ def fix(set_name, presets, refs, heel=False, surfaces=None, log=None, write=True
      "unchanged" (nothing helped without harm)}.
     write=False measures and solves but writes nothing."""
     pr = Project(set_name, refs)
+    if pr.squeeze:                                       # see Project.squeeze: left as the conversion made it
+        if write and os.path.isfile(pr.orig):
+            pr.restore()
+        return {"state": "squeeze", "before": 0, "after": 0, "changed": 0, "shapes": 0, "kept": 0, "presets": {}}
     surfaces = {} if surfaces is None else surfaces
     pvs = pvs or {}
     cases, case_preset = [], []                          # (body surface, slider values), (preset, weight)

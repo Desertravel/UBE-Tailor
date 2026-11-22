@@ -1,6 +1,11 @@
 # Changelog
 
 ## Unreleased
+- **Squeeze outfits keep their squeeze.** Latex and corset outfits often have their own sliders that press the body
+  inside them (Christmas Latex: "[Predator] Tight Corset", "Tight Belt", on by default). The Tailor put the clean UBE
+  body in instead, so the squeeze was lost. Now such sliders move the UBE body the same way (carried over from the
+  old body; Tight Belt up to 1.69 on both), and an outfit converted from its unbuilt BodySlide project keeps them on
+  its own shapes too. Fix clipping leaves these pieces as converted (it would push the pressed outfit back out).
 - **BodySlide add-ons.** Sliders that a BodySlide add-on (SliderSetAddOn) adds to the UBE body, feet or hands
   project - e.g. "BodyRef Addon - UBE 2.0 Donut" - are now carried into every converted outfit, so a preset that uses
   them shapes the outfits like the body. Only with a BodySlide that builds add-ons (BodySlide 6): an older one

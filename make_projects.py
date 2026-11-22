@@ -170,6 +170,131 @@ class Ref:
                 self.addons.append(name)
 
 
+SQUEEZE_REACH = 3.0  # a UBE body point takes an outfit's squeeze from the old body only this close to it
+
+
+_PROJECTS = []
+
+
+def outfit_projects():
+    """{output mesh base, lower-case: (SliderSets folder, <SliderSet>)} of the BodySlide projects of other mods
+    (the outfits' own, not the Tailor's), read once per process."""
+    if not _PROJECTS:
+        out = {}
+        ours = os.path.normcase(os.path.join(BS, "SliderSets")) if BS else ""
+        for d in env.bodyslide_dirs("SliderSets"):
+            if os.path.normcase(d) == ours:
+                continue
+            for f in os.listdir(d):
+                if not f.lower().endswith(".osp"):
+                    continue
+                try:
+                    root = ET.parse(os.path.join(d, f)).getroot()
+                except (OSError, ET.ParseError):
+                    continue
+                for ss in root.iter("SliderSet"):
+                    op, of = ss.findtext("OutputPath"), ss.findtext("OutputFile")
+                    if not (op and of):
+                        continue
+                    op = op.strip().replace("/", "\\").strip("\\")
+                    op = op[7:] if op.lower().startswith("meshes\\") else ("" if op.lower() == "meshes" else op)
+                    if not op.lower().startswith("!ube"):
+                        out.setdefault(os.path.join(op, of.strip()).lower(), (d, ss))
+        _PROJECTS.append(out)
+    return _PROJECTS[0]
+
+
+def body_slider_names():
+    """Slider names of the body projects (those that build femalebody): the standard ones, which the UBE body has
+    its own versions of. Any other slider an outfit project puts on its body is the outfit's own."""
+    names = set()
+    for (_d, ss) in outfit_projects().values():
+        if (ss.findtext("OutputFile") or "").strip().lower() == "femalebody":
+            names |= {sl.get("name") for sl in ss.findall("Slider")}
+    return names
+
+
+def osd_entry(path, entry, nverts):
+    """One entry of a BodySlide .osd as (nverts, 3) moves, or None (an outfit's .osd holds entries of shapes with
+    other point counts, so read_osd cannot take the whole file)."""
+    with open(path, "rb") as f:
+        if f.read(4) not in (b"\x00DSO", b"OSD\x00"):
+            raise ValueError(f"not an OSD file: {path}")
+        _ver, count = struct.unpack("<II", f.read(8))
+        for _ in range(count):
+            name = f.read(f.read(1)[0]).decode("utf-8", "replace")
+            (nd,) = struct.unpack("<H", f.read(2))
+            raw = f.read(14 * nd)
+            if name == entry:
+                rec = np.frombuffer(raw, dtype=np.dtype([("i", "<u2"), ("d", "<f4", 3)]))
+                out = np.zeros((nverts, 3))
+                ok = rec["i"] < nverts
+                out[rec["i"][ok]] = rec["d"][ok]
+                return out
+    return None
+
+
+def squeeze_body(base, use, src=None, log=print):
+    """([(slider attributes, UBE part, point indices, moves)], [(slider attributes, outfit shape, indices, moves)])
+    for the outfit's own sliders that press the body inside it and are on by default ("[Predator] Tight Corset" in
+    Christmas Latex): their move of the old body, carried onto the UBE body by projection; and, when the source is
+    the project's own (unbuilt) mesh, their moves of the outfit shapes as they are (a built mesh has them baked in
+    already). Empty when the outfit has no BodySlide project or no such slider."""
+    hit = outfit_projects().get(base.lower())
+    body = next((r for r in use if r.key == "body"), None)
+    if not hit or body is None:
+        return [], []
+    d, ss = hit
+    folder = (ss.findtext("DataFolder") or "").strip()
+    try:
+        shapes = {s.name: s for s in NifFile(os.path.join(os.path.dirname(d), "ShapeData", folder,
+                                                          (ss.findtext("SourceFile") or "").strip())).shapes}
+    except Exception:
+        return [], []
+    raw = bool(src) and os.path.normcase(os.path.abspath(src)) == os.path.normcase(os.path.abspath(os.path.join(
+        os.path.dirname(d), "ShapeData", folder, (ss.findtext("SourceFile") or "").strip())))
+    olds = {n for n, s in shapes.items() if BODY_RX.search(s.textures.get("Diffuse", "") or "")}
+    std = body_slider_names()
+    out, own, cache = [], [], {}
+    for sl in ss.findall("Slider"):
+        name = sl.get("name")
+        if not name or name in std or sl.get("zap") == "true" or sl.get("uv") == "true":
+            continue
+        if not (float(sl.get("small") or 0) or float(sl.get("big") or 0)):
+            continue                                 # off by default: nothing is pressed unless the player asks
+        for dd in sl.findall("Data"):
+            tgt = dd.get("target")
+            if tgt not in shapes or (tgt not in olds and not raw) or not dd.text or "\\" not in dd.text:
+                continue
+            fname, entry = dd.text.split("\\", 1)
+            shp = next((e for e in ss.findall("Shape") if e.get("target") == tgt), None)
+            sf = shp.get("DataFolder") if (shp is not None and shp.get("DataFolder") and dd.get("local") != "true") \
+                else folder
+            s = shapes[tgt]
+            try:
+                D = osd_entry(os.path.join(os.path.dirname(d), "ShapeData", sf, fname), entry, len(s.verts))
+            except (OSError, ValueError, IndexError, struct.error):
+                D = None
+            if D is None or not np.abs(D).max():
+                continue
+            if tgt not in olds:                      # an outfit shape of the unbuilt project: as it is
+                keep = np.nonzero(np.abs(D).max(1) > 1e-5)[0]
+                own.append((dict(sl.attrib), tgt, keep, D[keep]))
+                continue
+            if tgt not in cache:
+                P, F = np.array(s.verts, dtype=np.float64), np.array(s.tris, dtype=np.int64)
+                cache[tgt] = (F,) + tuple(ube_field.project(body.verts, P, F))
+            F, tri, bary, dist = cache[tgt]
+            M = ube_field.interp(D, F, tri, bary)
+            M[dist > SQUEEZE_REACH] = 0
+            keep = np.nonzero(np.abs(M).max(1) > 1e-3)[0]
+            if len(keep):
+                out.append((dict(sl.attrib), body, keep, M[keep]))
+                log(f"   squeeze: '{name}' presses the UBE body too ({len(keep)} points, up to "
+                    f"{np.linalg.norm(M, axis=1).max():.2f})")
+    return out, own
+
+
 _ADDONS = []
 
 
@@ -799,6 +924,25 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
                         entries.append((n + name, keep, stored(n, diff[keep])))
                         rows.append((n + name, n, None))
         data_for[name] = rows
+    # squeeze: the outfit's own sliders that press the body inside it (latex, corsets: "Tight Corset") move the UBE
+    # body the same way, so the effect is not lost with the old body
+    sq_body, sq_own = squeeze_body(base, use, src, log)
+    for attrs, r, idx, diff in sq_body:
+        name = attrs.get("name")
+        if any(t == r.shape for _dn, t, _e in data_for.get(name, [])):
+            continue
+        sliders.setdefault(name, attrs)
+        entries.append((r.shape + name, idx, diff))
+        data_for.setdefault(name, []).append((r.shape + name, r.shape, None))
+    for attrs, n, idx, diff in sq_own:
+        name = attrs.get("name")
+        if not any(a.get("name") == name for a, *_r in sq_body) or n not in conformed:
+            continue                                 # only with a squeeze that reaches the body
+        if any(t == n for _dn, t, _e in data_for.get(name, [])):
+            continue
+        ok = idx < len(conformed[n])
+        entries.append((n + name, idx[ok], diff[ok]))
+        data_for.setdefault(name, []).append((n + name, n, None))
     write_osd(os.path.join(shape_dir, osd_name), entries)
     if os.path.isfile(os.path.join(shape_dir, osd_name + ".orig")):
         os.remove(os.path.join(shape_dir, osd_name + ".orig"))     # a "Fix clipping" copy of the old conversion
