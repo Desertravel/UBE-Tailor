@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- **Right-click a converted piece: Open in Outfit Studio.** Opens its project straight in Outfit Studio, to touch it
+  up by hand (save there, then Batch Build). Needs the Tailor started from MO2; a project made since the Tailor was
+  opened needs the Tailor closed first (MO2 shows programs the files as they were when it started them).
 - **Health check: invisible bodies.** It now warns when a body mesh the game uses (female, male, UBE female / male)
   has no texture - built from a BodySlide reference project like "HIMBO Ref - Merged Body", which Batch Build can
   pick for the body's path. Men then showed only head, hands and feet.

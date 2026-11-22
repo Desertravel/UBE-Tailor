@@ -192,6 +192,7 @@ class App:
         self.tree.pack(side="left", fill="both", expand=True)
         sb.pack(side="left", fill="y")
         self.tree.bind("<Button-1>", self.on_click)
+        self.tree.bind("<Button-3>", self.on_right_click)
         self.tree.tag_configure("grp", font=FONT_B, foreground="#bfe9ec", background=PANEL)
         self.tree.tag_configure("odd", background="#0d1e23")
         for g, col in GRADE.items():
@@ -476,6 +477,33 @@ class App:
             self.checked.symmetric_difference_update({row})
         self.populate()
         return "break"
+
+    def on_right_click(self, ev):
+        """Right-click on a converted piece: open its project in Outfit Studio, to touch it up by hand."""
+        row = self.tree.identify_row(ev.y)
+        it = next((i for i in self.items if i["base"].lower() == row), None) if row and not row.startswith("p:") else None
+        if not it:
+            return
+        menu = tk.Menu(self.root, tearoff=0)
+        if it["state"] in ("built", "done"):
+            menu.add_command(label="Open in Outfit Studio", command=lambda: self.open_outfit_studio(it))
+        else:
+            menu.add_command(label="Open in Outfit Studio (convert it first)", state="disabled")
+        menu.tk_popup(ev.x_root, ev.y_root)
+        return "break"
+
+    def open_outfit_studio(self, it):
+        name = tc.set_name_of(it["base"])
+        path = tc.osp_of(it["base"])
+        if os.path.basename(path).lower() in self.new_projects():
+            messagebox.showinfo("UBE Tailor", (
+                "This project was made since you opened the Tailor, so an Outfit Studio started from here cannot "
+                f"see it.\n\nClose the Tailor, start Outfit Studio from MO2, then File > Load Project > '{name}'."))
+            return
+        ok, msg = env.launch_outfit_studio(name, path)
+        self.say(msg)
+        if not ok:
+            messagebox.showinfo("UBE Tailor", msg)
 
     def check_visible(self, on):
         keys = {i["base"].lower() for i in self.visible()}

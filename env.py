@@ -468,6 +468,28 @@ def launch_bodyslide():
     return True, f"BodySlide started through MO2 ('{title}')."
 
 
+def outfit_studio_exe():
+    b = bodyslide_exe()
+    if not b:
+        return None
+    return next((os.path.join(os.path.dirname(b), n) for n in ("OutfitStudio x64.exe", "OutfitStudio.exe")
+                 if os.path.isfile(os.path.join(os.path.dirname(b), n))), None)
+
+
+def launch_outfit_studio(project, osp):
+    """Open a BodySlide project in Outfit Studio (--project <slider set name> <.osp file>), to touch a piece up by
+    hand. Only from inside MO2, so Outfit Studio sees the mods. Returns (started, message)."""
+    import subprocess
+    exe = outfit_studio_exe()
+    if not exe:
+        return False, "Outfit Studio was not found next to BodySlide in the modpack."
+    if not inside_mo2():
+        return False, ("Start the Tailor from MO2 to open Outfit Studio from here (started on its own it would not "
+                       f"see your mods). Or start Outfit Studio from MO2: File > Load Project > '{project}'.")
+    subprocess.Popen([exe, "--project", project, osp], cwd=os.path.dirname(exe))
+    return True, f"Outfit Studio started with '{project}'. Save the project there, then Batch Build in BodySlide."
+
+
 def plugin_path(name):
     """Winning file of a plugin (mods by priority, overwrite, game Data), or None."""
     return find(name)
