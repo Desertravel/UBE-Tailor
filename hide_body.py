@@ -10,7 +10,8 @@ This does it per piece, for the presets the player uses: a body point is hidden 
 opaque outfit surface lies along the skin right over it (a sheet roughly parallel to the skin, within a few units
 outside it, or a little under it where it clips). A band of body points along the edge of every covered region
 stays (openings, cut-outs, the neckline), so no hole can show. Shapes with transparency (lace, mesh, alpha cut-outs)
-never count as covering: the skin must show through them. Only the project's hidden-body zap changes (.osd, and
+never count as covering: the skin must show through them; neither do shapes the outfit's HDT-SMP physics moves (wind
+and motion lift them off the skin). Only the project's hidden-body zap changes (.osd, and
 .osd.orig of Fix clipping); BodySlide Batch Build makes the meshes.
 
   python hide_body.py <set name> <preset> [<preset> ...]      measure and print, writes nothing
@@ -32,7 +33,40 @@ IN = 1.5         # ... or this far under it (where it clips: the very spots to h
 PARALLEL = 0.5   # |outfit normal . skin normal| at least this: a sheet lying along the skin, not an edge or a strap
 ALONG = 0.6      # the outfit point must lie roughly along the skin normal (not beside the point)
 EDGE = 1         # rings of body points kept visible along every covered region's edge
-VERSION = 1      # pieces measured with an older rule are measured again (db[set]["hb"])
+VERSION = 2      # pieces measured with an older rule are measured again (db[set]["hb"])
+#   2 = 2026-11-22: the parts the outfit's HDT-SMP physics moves (skirts, frills, capes, coat tails) never cover:
+#       when wind or motion lifts them, the body hidden under them showed as holes / let the skin through
+MOVING = 0.2     # an outfit point this much weighted to physics bones the body does not have is cloth that moves
+
+
+_RESOLVER = []
+
+
+def _moving_bones(nif_path, body_shape):
+    """Bones of the project's mesh that its SMP physics moves off the body (empty when none / XML unreadable)."""
+    import smp_check
+    if not smp_check.has_smp(nif_path):
+        return set()
+    if not _RESOLVER:
+        from resolve_mesh import Resolver
+        _RESOLVER.append(Resolver())
+    try:
+        return smp_check.moving_bones_of(nif_path, _RESOLVER[0], body_shape) or set()
+    except Exception:
+        return set()
+
+
+def _still_tris(shape, F, bones):
+    """The triangles of an outfit shape that stay on the body: none of their points rides on physics bones."""
+    if not bones or not len(F):
+        return F
+    w = np.zeros(len(shape.verts))
+    for b, lst in shape.bone_weights.items():
+        if b in bones:
+            for i, x in lst:
+                if i < len(w):
+                    w[i] += x
+    return F[(w[F] < MOVING).all(1)]
 
 
 def _vertex_normals(V, F):
@@ -91,8 +125,11 @@ class Piece:
         idx = conv[self.entry][0] if self.has_body else np.zeros(0, dtype=np.int64)
         self.zapped = np.zeros(len(self.body.verts), dtype=bool)
         self.zapped[idx[idx < len(self.body.verts)]] = True
+        self.moving = _moving_bones(self.pr.nif_path, self.body.shape)   # SMP cloth does not stay over the skin
         self.opaque = [n for n, s in self.pr.shape_of.items() if not s.has_alpha_property]
-        self.tris = {n: np.array(self.pr.shape_of[n].tris, dtype=np.int64) for n in self.opaque}
+        self.tris = {n: _still_tris(self.pr.shape_of[n], np.array(self.pr.shape_of[n].tris, dtype=np.int64),
+                                    self.moving) for n in self.opaque}
+        self.opaque = [n for n in self.opaque if len(self.tris[n])]
 
     def outfit_at(self, pv, size):
         vals = self.pr.values(pv, size)

@@ -84,6 +84,61 @@ def falling(xml_text, shape_bones):
     return [(s, b) for s, b in auto if b not in held]
 
 
+def moving_bones(xml_text, shape_bones, body_bones=()):
+    """Bones the physics moves away from the body: the XML gives them mass (declared, or created with the default
+    mass when a shape is skinned to them undeclared) and the body is not skinned to them (skirt, frill, cape, tail
+    bones; breast / butt bones the body jiggles on too do not count). None if the XML cannot be read."""
+    body_bones = set(body_bones)
+    try:
+        root = ET.fromstring(re.sub(r"<\?xml[^>]*\?>", "", xml_text, count=1).strip())
+    except ET.ParseError:
+        return None
+    default, templates, mass = 0.0, {}, {}
+
+    def own_mass(el, base):
+        m = el.find("mass")
+        try:
+            return float(m.text) if m is not None and m.text else base
+        except ValueError:
+            return base
+
+    def walk(parent):
+        nonlocal default
+        for el in parent:
+            if el.tag == "bone-default":
+                base = templates.get(el.get("extends"), default)
+                if el.get("name"):
+                    templates[el.get("name")] = own_mass(el, base)
+                else:
+                    default = own_mass(el, base)
+            elif el.tag == "bone" and el.get("name") and el.get("name") not in mass:
+                mass[el.get("name")] = own_mass(el, templates.get(el.get("template"), default))
+            elif el.tag in SHAPES:
+                for b in shape_bones.get(el.get("name"), ()):
+                    mass.setdefault(b, default)
+            elif el.tag == "constraint-group":
+                walk(el)
+
+    walk(root)
+    return {b for b, m in mass.items() if m > 0 and b not in body_bones}
+
+
+def moving_bones_of(nif_path, resolver, body_shape=None):
+    """The bones of a nif that its HDT-SMP XML moves away from the body shape (set() without SMP; None when it has
+    SMP but the XML is not readable)."""
+    rel = xml_rel(nif_path)
+    if rel is None:
+        return set()
+    from nifly_env import NifFile
+    kind, src = resolver.resolve(rel)
+    if kind != "loose":
+        return None
+    with open(src, encoding="utf-8", errors="replace") as f:
+        text = f.read()
+    shapes = {s.name: list(s.bone_names) for s in NifFile(nif_path).shapes}
+    return moving_bones(text, shapes, shapes.get(body_shape, ()))
+
+
 def check_nif(nif_path, resolver):
     """None = no SMP; else (xml rel path, [(shape, bone)] or None if the XML is missing/unreadable)."""
     rel = xml_rel(nif_path)

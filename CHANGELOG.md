@@ -1,6 +1,11 @@
 # Changelog
 
 ## Unreleased
+- **Fix clipping no longer hides the body under cloth that physics moves.** HDT-SMP skirts, coat tails, frills and
+  dress hems count as covering the body only where they rest; wind and motion lift them, and the body hidden under
+  them showed as holes or let the skin through. Now outfit parts weighted to physics bones the body does not have
+  never cover it (cups, bodices and anything on the body's own breast / butt bones still do). On 35 SMP pieces with
+  a body: 123,092 -> 88,294 hidden body points. Pieces are measured again at the next Fix clipping.
 - **Thigh pieces that could not be worn on UBE characters.** A leg piece that leaves slot 53 (so the UBE vulva and the
   body pieces keep it) was moved to 54, thought free - but UBE's own 00UBE_HideUnderwear armor sits on 54 and UBE
   keeps it on its characters, so putting the piece on took it off again (TEWOBA Ebony Bikini Thigh A / B). Such

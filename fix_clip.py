@@ -100,7 +100,8 @@ class Project:
         folder, src = ss.findtext("DataFolder"), ss.findtext("SourceFile")
         self.osd_path = os.path.join(mp.BS, "ShapeData", folder, src[:-4] + ".osd")
         self.orig = self.osd_path + ".orig"
-        nif = NifFile(os.path.join(mp.BS, "ShapeData", folder, src))
+        self.nif_path = os.path.join(mp.BS, "ShapeData", folder, src)
+        nif = NifFile(self.nif_path)
         ref_names = {r.shape for r in refs}
         zapped = {d.get("target") for sl in ss.findall("Slider") if sl.get("zap") == "true" for d in sl.findall("Data")}
         self._nif = nif                          # keeps the shapes below readable (save() asks for their transform)
