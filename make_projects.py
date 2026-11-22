@@ -174,10 +174,11 @@ _ADDONS = []
 
 
 def addon_sets():
-    """[(SliderSets folder, <SliderSetAddOn> element)] of every enabled mod, read once per process."""
+    """[(SliderSets folder, <SliderSetAddOn> element)] of every enabled mod, read once per process. Empty when the
+    modpack's BodySlide is too old to build add-ons (env.bodyslide_reads_addons)."""
     if not _ADDONS:
         found = []
-        for d in env.bodyslide_dirs("SliderSets"):
+        for d in (env.bodyslide_dirs("SliderSets") if env.bodyslide_reads_addons() else []):
             for f in os.listdir(d):
                 if not f.lower().endswith(".osp"):
                     continue

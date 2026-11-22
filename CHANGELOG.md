@@ -3,8 +3,9 @@
 ## Unreleased
 - **BodySlide add-ons.** Sliders that a BodySlide add-on (SliderSetAddOn) adds to the UBE body, feet or hands
   project - e.g. "BodyRef Addon - UBE 2.0 Donut" - are now carried into every converted outfit, so a preset that uses
-  them shapes the outfits like the body. Outfits converted before the add-on was installed: tick "Re-convert done
-  ones" and convert them again.
+  them shapes the outfits like the body. Only with a BodySlide that builds add-ons (BodySlide 6): an older one
+  ignores them, the body would lack the sliders, so outfits do not get them either. Outfits converted before the
+  add-on was installed: tick "Re-convert done ones" and convert them again.
 - **Fix clipping no longer hides the body under cloth that physics moves.** HDT-SMP skirts, coat tails, frills and
   dress hems count as covering the body only where they rest; wind and motion lift them, and the body hidden under
   them showed as holes or let the skin through. Now outfit parts weighted to physics bones the body does not have

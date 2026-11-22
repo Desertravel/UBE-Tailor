@@ -412,6 +412,24 @@ def bodyslide_exe():
     return None
 
 
+_ADDONS_OK = []
+
+
+def bodyslide_reads_addons():
+    """True when the modpack's BodySlide builds add-on projects (SliderSetAddOn, BodySlide 6): older ones ignore
+    them, so the body would lack an add-on's sliders and outfits must not get them either. Unknown counts as no."""
+    if not _ADDONS_OK:
+        p, ok = bodyslide_exe(), False
+        if p:
+            try:
+                with open(p, "rb") as f:
+                    ok = b"SliderSetAddOn" in f.read()
+            except OSError:
+                pass
+        _ADDONS_OK.append(ok)
+    return _ADDONS_OK[0]
+
+
 def mo2_executable(binary_names):
     """Title of the MO2 executable (ModOrganizer.ini [customExecutables]) whose binary is one of binary_names."""
     want = {b.lower() for b in binary_names}
