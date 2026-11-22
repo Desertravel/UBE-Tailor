@@ -78,6 +78,9 @@ def apply_theme(root):
 
 
 GROUP_NAME = "UBE Auto Conversions"   # make_projects.GROUP (not imported here: it needs PyNifly)
+BUILD_STEPS = (f"close the Tailor, press F5 in MO2, start BodySlide from MO2, pick the group "
+               f"'{GROUP_NAME}' and your preset, tick Build Morphs, press Batch Build. Then open the Tailor again: it "
+               "scans by itself.")
 
 
 class App:
@@ -217,6 +220,19 @@ class App:
         root.after(150, self.check_game)
         root.after(200, self.do_scan)
 
+    def new_projects(self):
+        """Project files made since MO2 started the Tailor: a BodySlide started from here cannot see them."""
+        if self.osp_at_start is None or not env.inside_mo2():
+            return set()
+        return tc.project_files() - self.osp_at_start
+
+    def build_hint(self, why):
+        """The 'Next:' line after converting or fixing: BodySlide from here, or (new projects) from MO2."""
+        if self.new_projects():
+            return f"Next: {BUILD_STEPS} ({why})"
+        return (f"Next: press BodySlide -> group '{GROUP_NAME}' -> your preset -> tick Build Morphs -> Batch Build "
+                f"({why}). Close BodySlide when it is done - the Tailor then scans by itself.")
+
     def do_bodyslide(self):
         """Open BodySlide (through MO2, so it sees the mods); when it is closed the Tailor scans again (watch)."""
         if tc.running("SkyrimSE.exe"):
@@ -225,12 +241,13 @@ class App:
         # MO2 shows a program the mod folders as they were when it started the program, and BodySlide started from
         # here gets our view: projects converted since then are new files it cannot see, so Batch Build skipped
         # them without a word (the vanilla rings). Re-converted ones are fine (their files were there already).
-        new = tc.project_files() - self.osp_at_start if self.osp_at_start is not None and env.inside_mo2() else set()
-        if new and not messagebox.askyesno("UBE Tailor", (
+        # Nobody wants half a Batch Build, so then the button only says how to build them (no Yes/No to get wrong).
+        new = self.new_projects()
+        if new:
+            messagebox.showinfo("UBE Tailor", (
                 f"{len(new)} project(s) were made since you opened the Tailor. A BodySlide started from here cannot "
-                "see them: MO2 shows it the files as they were when it started the Tailor, so Batch Build would skip "
-                "them.\n\nTo build them: close the Tailor, start BodySlide from MO2, Batch Build, then open the "
-                "Tailor again.\n\nStart BodySlide from here anyway (it builds everything else)?")):
+                "see them (MO2 shows it the files as they were when it started the Tailor).\n\nTo build them: "
+                + BUILD_STEPS))
             return
         ok, msg = env.launch_bodyslide()
         self.say(msg)
@@ -643,8 +660,8 @@ class App:
                 self._qa(made, preset)
             if made and not self.stop_flag:
                 self.say(tc.repoint(False).strip().splitlines()[-1])
-                self.say("Next: open BodySlide from MO2 -> group 'UBE Auto Conversions' -> pick your preset -> Batch Build."
-                         " Then press Scan here: the patch switches each piece to its UBE mesh once it is built.")
+                self.say(self.build_hint("the patch switches each piece to its UBE mesh once it is built; run Fix "
+                                         "clipping first if you want it"))
             self.rescan()
         self.run(work)
 
@@ -730,9 +747,7 @@ class App:
                          f"{n['hid_pieces']} piece(s); skin through the outfit at your presets "
                          f"{n['through0']:,} -> {n['through1']:,} points")
             if n["fixed"] or n["hidden"]:
-                self.say("Next: press BodySlide -> group 'UBE Auto Conversions' -> your preset -> tick Build Morphs -> "
-                         "Batch Build again, so the game gets the fixed pieces. Close BodySlide when it is done - "
-                         "the Tailor then scans by itself.")
+                self.say(self.build_hint("so the game gets the fixed pieces"))
             self.rescan()
         self.run(work)
 

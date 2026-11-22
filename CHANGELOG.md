@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+- **BodySlide button: no Yes/No that is always No.** After converting, a BodySlide started from the Tailor cannot see
+  the new projects (MO2 shows it the files as they were when it started the Tailor), and the button asked whether to
+  start it anyway. Now it just says what to do (close the Tailor, F5 in MO2, BodySlide from MO2, Batch Build), and the
+  "Next:" line after converting or Fix clipping says the same when there are new projects.
 - **Steel no longer bends like cloth.** Metal shapes (the ones with a shine map: steel, iron, dwarven, ebony plate,
   buckles, chain links) followed every body slider point by point, so a muscle preset gave the plates abs, veins
   and creases. Now each metal part follows a smoothed version of the body's motion: it still grows and moves with
