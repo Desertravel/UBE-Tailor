@@ -223,7 +223,38 @@ def check(deep=False, log=None):
         out.append(Finding("cannot", "info", f"cannot be converted: {counts['oldrim']} old Skyrim LE mesh(es) "
                            f"(port them to SE first), {counts['missing']} mesh(es) the mod points at but never "
                            "shipped - not loose, not in any loaded BSA (invisible in game anyway)"))
+    bare = bare_bodies()
+    if bare:
+        out.append(Finding("bare_body", "you", f"{len(bare)} body mesh(es) the game uses have no texture - built from a "
+                           "BodySlide reference project (\"... Ref ...\"), so that body is invisible in game (men "
+                           "showed only head, hands and feet). Delete them, or build the real body project in "
+                           "BodySlide (e.g. \"HIMBO Body - Vanilla Nevernude\", never a \"Ref\" one)", bare))
     say(f"health check done in {time.time() - t0:.0f} s")
+    return out
+
+
+BODY_MESHES = [r"actors\character\character assets\femalebody", r"actors\character\character assets\malebody",
+               r"!UBE\Body\femalebody_tangent", r"!UBE\Body\malebody_tangent"]
+
+
+def bare_bodies():
+    """'<file> (<mod>)' for every body mesh the game uses (the winning loose _0 / _1 file) with no textured shape:
+    BodySlide reference projects ("HIMBO Ref - Merged Body") build to the body's path but carry no texture."""
+    from nifly_env import NifFile
+    out = []
+    for base in BODY_MESHES:
+        for w in ("_1.nif", "_0.nif"):
+            p = env.find(os.path.join("meshes", base + w))
+            if not p:
+                continue
+            try:
+                shapes = NifFile(p).shapes
+            except Exception:
+                continue
+            if shapes and not any((s.textures.get("Diffuse") or "").strip() for s in shapes):
+                rel = os.path.relpath(p, env.MODS) if env.MODS else p
+                mod = rel.split(os.sep)[0] if not rel.startswith("..") else os.path.dirname(p)
+                out.append(f"{base + w} ({mod})")
     return out
 
 

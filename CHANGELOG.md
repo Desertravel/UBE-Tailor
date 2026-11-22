@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- **Health check: invisible bodies.** It now warns when a body mesh the game uses (female, male, UBE female / male)
+  has no texture - built from a BodySlide reference project like "HIMBO Ref - Merged Body", which Batch Build can
+  pick for the body's path. Men then showed only head, hands and feet.
 - **Lost conversions show as "Not converted", not "Native UBE".** When the Tailor's projects were gone (deleted, or a
   modpack reinstall wiped the output mod) but UBE Tailor.esp still pointed the pieces at UBE meshes, Scan listed them
   as UBE meshes from another mod and never offered to convert them again (4,003 pieces after a reinstall). Now only
