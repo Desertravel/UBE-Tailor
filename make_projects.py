@@ -138,6 +138,59 @@ class Ref:
                 if name and name not in self.sliders and dn in self.osd:
                     self.sliders[name] = (dict(sl.attrib, small="0", big="0"), dn)
                     self.extra.append(name)
+        # BodySlide add-ons (SliderSetAddOn, e.g. "BodyRef Addon - UBE 2.0 Donut"): another mod adds sliders to this
+        # very project, with their data in its own .osd in the same ShapeData folder. Outfits get them too, so a preset
+        # that uses them shapes the outfits like the body. file_of: the .osd an add-on slider's body data lives in.
+        self.file_of, self.addons = {}, []
+        for d, ad in addon_sets():
+            bp = ad.find("BaseProject")
+            if bp is None or bp.get("ProjectName") != ss.get("name"):
+                continue
+            folder = (ad.findtext("DataFolder") or "").strip()
+            dfile = (ad.findtext("SliderDataFile") or "").strip()
+            path = os.path.join(os.path.dirname(d), "ShapeData", folder, dfile)
+            shp = ad.find("Shape")
+            if folder != self.folder or not dfile or not os.path.isfile(path) or (
+                    shp is not None and shp.get("vertexCount") and int(shp.get("vertexCount")) != len(self.verts)):
+                continue
+            try:
+                more = read_osd(path, len(self.verts))
+            except (OSError, ValueError, struct.error):
+                continue
+            for sl in ad.findall("Slider"):
+                dd, name = sl.find("Data"), sl.get("name")
+                if sl.get("inherited") == "true" or dd is None or not name or name in self.sliders:
+                    continue
+                dn = dd.get("name")
+                if dd.get("target", self.shape) != self.shape or dn not in more or dn in self.osd:
+                    continue
+                self.osd[dn] = more[dn]
+                self.sliders[name] = (dict(sl.attrib), dn)
+                self.file_of[name] = dfile
+                self.addons.append(name)
+
+
+_ADDONS = []
+
+
+def addon_sets():
+    """[(SliderSets folder, <SliderSetAddOn> element)] of every enabled mod, read once per process."""
+    if not _ADDONS:
+        found = []
+        for d in env.bodyslide_dirs("SliderSets"):
+            for f in os.listdir(d):
+                if not f.lower().endswith(".osp"):
+                    continue
+                p = os.path.join(d, f)
+                try:
+                    with open(p, "rb") as fh:
+                        if b"SliderSetAddOn" not in fh.read():
+                            continue
+                    found += [(d, ad) for ad in ET.parse(p).getroot().iter("SliderSetAddOn")]
+                except (OSError, ET.ParseError):
+                    continue
+        _ADDONS.append(found)
+    return _ADDONS[0]
 
 
 def keep_crotch(hide, r):
@@ -719,7 +772,7 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
             continue
         for r in use:
             if name in r.sliders and r.sliders[name][1]:
-                rows.append((r.sliders[name][1], r.shape, r.folder + ".osd"))
+                rows.append((r.sliders[name][1], r.shape, r.file_of.get(name, r.folder + ".osd")))
         if name in areas and not any(name in r.sliders for r in refs):
             area, push = areas[name]
             for n in outfit:
