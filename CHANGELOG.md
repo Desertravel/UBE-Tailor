@@ -28,7 +28,8 @@
   keeps it on its characters, so putting the piece on took it off again (TEWOBA Ebony Bikini Thigh A / B). Such
   pieces, and pieces that were on 54 in the outfit itself (stockings, garters, thigh bands: Witch, Cheongsam), now
   take a spare slot no armor of the same mod uses (60, else 48, 55, 59, 47, 44), one per slot they leave, so pieces
-  that were on 52, 53 and 54 can still be worn together. Press Update patch; no conversion or BodySlide build needed.
+  that were on 52, 53 and 54 can still be worn together. An armor that holds 54 with none of its addons shown there
+  (TAWOBA Imperial bikini pants) just drops it. Press Update patch; no conversion or BodySlide build needed.
 - **BodySlide button: no Yes/No that is always No.** After converting, a BodySlide started from the Tailor cannot see
   the new projects (MO2 shows it the files as they were when it started the Tailor), and the button asked whether to
   start it anyway. Now it just says what to do (close the Tailor, F5 in MO2, BodySlide from MO2, Batch Build), and the

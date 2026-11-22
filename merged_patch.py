@@ -508,6 +508,10 @@ def smart_slots(e, armo_data, converted):
             had = [a for a in arma_objs if _bod(armas[a]) & bit]
             if bod & bit and had and all(out["arma"].get(a, 0) & bit for a in had):
                 mask |= bit
+            elif bit == UBE_HIDE and bod & bit and not had and bod & ~bit & 0xFFFFFFFF and \
+                    sum(1 for t, x in subrecords(armo_data[armo_obj]) if t == b"MODL" and len(x) == 4) == len(arma_objs):
+                mask |= bit          # the armor holds 54 but none of its addons (all known) is shown there:
+                #                      TAWOBA bikini pants [52, 54] with their one addon on 52
         if mask:
             out["armo"][armo_obj] = mask
         add = 0                                      # the armor must hold the slots its addons are shown on
