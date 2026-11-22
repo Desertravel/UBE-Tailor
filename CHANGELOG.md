@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+- **Lost conversions show as "Not converted", not "Native UBE".** When the Tailor's projects were gone (deleted, or a
+  modpack reinstall wiped the output mod) but UBE Tailor.esp still pointed the pieces at UBE meshes, Scan listed them
+  as UBE meshes from another mod and never offered to convert them again (4,003 pieces after a reinstall). Now only
+  a UBE mesh another mod points at counts as native.
 - **Squeeze outfits keep their squeeze.** Latex and corset outfits often have their own sliders that press the body
   inside them (Christmas Latex: "[Predator] Tight Corset", "Tight Belt", on by default). The Tailor put the clean UBE
   body in instead, so the squeeze was lost. Now such sliders move the UBE body the same way (carried over from the

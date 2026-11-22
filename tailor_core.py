@@ -428,11 +428,13 @@ def scan():
         if it is None:
             it = items[base.lower()] = {"base": base, "plugin": plugin, "edids": [], "slots": set(),
                                         "weighted": bool(mo), "ube_all": True, "ube_any": False, "file": pfile,
-                                        "foreign": foreign}
+                                        "foreign": foreign, "ube_other": False}
         it["edids"].append(edid)
         it["slots"] |= slots
         it["ube_all"] &= ube
         it["ube_any"] |= ube
+        # a UBE mesh named by another mod (a UBE patch, or the outfit mod itself), not only by UBE Tailor.esp
+        it["ube_other"] |= ube and (pfile is not None or foreign is not None)
     out = []
     db = load_db()
     _RES.clear()                          # mods may have changed since the last scan
@@ -454,8 +456,11 @@ def scan():
             it["by"] = handmade[it["base"].lower()][0]
         elif proj:
             it["state"] = "done" if it["ube_all"] else "built"
-        elif it["ube_any"] and (kind_of(it["base"], it["slots"], it["plugin"]) != "jewelry"
-                                or mesh_exists("!UBE\\" + it["base"])):
+        # ube_other: when only UBE Tailor.esp points it at a UBE mesh but its project is gone (deleted, or a
+        # reinstall wiped the output mod), it is ours to convert again, not "a UBE mesh from another mod".
+        # Body parts (custom skins pointed at the UBE body) are never converted, whoever points them.
+        elif it["ube_any"] and (it["ube_other"] or kind_of(it["base"], it["slots"], it["plugin"]) == "body") and (
+                kind_of(it["base"], it["slots"], it["plugin"]) != "jewelry" or mesh_exists("!UBE\\" + it["base"])):
             # a UBE mesh from another mod. For jewelry only when that mesh is really there: UBE Vanilla Armor and
             # Clothes points the vanilla silver / gold rings at !UBE meshes it does not ship, so UBE races showed no
             # ring at all. Without the mesh the ring is converted like any other; the Tailor's mesh has that path.
