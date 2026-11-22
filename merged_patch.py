@@ -847,8 +847,11 @@ def build(add=(), exclude=(), log=print, add_foreign=()):
             src_arma = {fid & 0xFFFFFF: d for sig, fid, d, _fl in recs if sig == b"ARMA" and fid >> 24 >= len(ms)}
             for a, mask in list(stripped.items())[:3]:
                 ed = next((zstr(x) for t, x in subrecords(src_arma[a]) if t == b"EDID"), f"{a:06x}")
-                log(f"   smart slots: {ed} ({name}) - slot(s) "
-                    + ", ".join(str(s) for s, bit in SLOT_NAMES.items() if mask & bit) + " removed: nothing of it there")
+                why = [str(s) for s, bit in SLOT_NAMES.items() if mask & bit]
+                text = (f"slot(s) {', '.join(why)} removed: nothing of it there" if why else "")
+                if mask & UBE_HIDE:
+                    text += ("; " if text else "") + "moved off 54 (UBE's hidden underwear item sits there)"
+                log(f"   smart slots: {ed} ({name}) - {text}")
         try:                                   # renumber once on a throw-away index to catch odd data early
             mod_records(e, {k: 0 for k in names}, 0, {f"{low}|{a:06x}": FIRST_ID for _o, al in todo for a in al},
                         0, target, extra, converted)
@@ -860,7 +863,7 @@ def build(add=(), exclude=(), log=print, add_foreign=()):
         log(f"   {n_win} armor(s) copied from a later plugin that changes them (balance patch etc.) - its changes stay")
     if n_strip:
         log(f"   smart slots: {n_strip} armor addon(s) lost forearm / calf / crotch (52, 53) slots their mesh does "
-            "not cover")
+            "not cover, or left 54 (UBE's hidden underwear item)")
     n_over = 0
     for pname in forder:
         if pname.lower() not in enabled:
