@@ -126,15 +126,12 @@ def moving_bones(xml_text, shape_bones, body_bones=()):
 def moving_bones_of(nif_path, resolver, body_shape=None):
     """The bones of a nif that its HDT-SMP XML moves away from the body shape (set() without SMP; None when it has
     SMP but the XML is not readable)."""
-    rel = xml_rel(nif_path)
-    if rel is None:
+    if xml_rel(nif_path) is None:
         return set()
     from nifly_env import NifFile
-    kind, src = resolver.resolve(rel)
-    if kind != "loose":
+    text = read_xml(nif_path, resolver)
+    if text is None:
         return None
-    with open(src, encoding="utf-8", errors="replace") as f:
-        text = f.read()
     shapes = {s.name: list(s.bone_names) for s in NifFile(nif_path).shapes}
     return moving_bones(text, shapes, shapes.get(body_shape, ()))
 
@@ -170,11 +167,9 @@ def check_nif(nif_path, resolver):
     if rel is None:
         return None
     from nifly_env import NifFile
-    kind, src = resolver.resolve(rel)
-    if kind != "loose":
+    text = read_xml(nif_path, resolver)
+    if text is None:
         return rel, None
-    with open(src, encoding="utf-8", errors="replace") as f:
-        text = f.read()
     nif = NifFile(nif_path)
     return rel, falling(text, {s.name: list(s.bone_names) for s in nif.shapes})
 

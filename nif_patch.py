@@ -19,6 +19,42 @@ def near_identity(t, R, s):
             and abs(s - 1) < 1e-4)
 
 
+def replace_xml_string(path, new, dry=False):
+    """Point a nif's HDT-SMP XML path (the one header string ending in .xml) at `new`. Blocks name strings by index,
+    so only the header string table changes length; every block stays byte-identical. False when the nif has no such
+    string, or more than one. dry: only tell whether it could."""
+    with open(path, "rb") as f:
+        b = bytearray(f.read())
+    p = b.index(b"\n") + 1
+    _ver, _e, _u, nblocks = struct.unpack_from("<IBII", b, p); p += 13
+    p += 4                                           # BS version
+    for _ in range(3):
+        p += 1 + b[p]
+    (ntypes,) = struct.unpack_from("<H", b, p); p += 2
+    for _ in range(ntypes):
+        (n,) = struct.unpack_from("<I", b, p); p += 4 + n
+    p += 2 * nblocks + 4 * nblocks
+    nstr_ofs = p
+    nstr, maxlen = struct.unpack_from("<II", b, p); p += 8
+    hits = []
+    for _ in range(nstr):
+        (n,) = struct.unpack_from("<I", b, p)
+        if bytes(b[p + 4:p + 4 + n]).lower().endswith(b".xml"):
+            hits.append((p, n))
+        p += 4 + n
+    if len(hits) != 1:
+        return False
+    if dry:
+        return True
+    q, n = hits[0]
+    raw = new.encode("cp1252")
+    b[q:q + 4 + n] = struct.pack("<I", len(raw)) + raw
+    struct.pack_into("<I", b, nstr_ofs + 4, max(maxlen, len(raw)))
+    with open(path, "wb") as f:
+        f.write(b)
+    return True
+
+
 class SseNif:
     def __init__(self, path):
         self.path = path

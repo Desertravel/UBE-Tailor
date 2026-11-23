@@ -1,6 +1,13 @@
 # Changelog
 
 ## Unreleased
+- **SMP skirts and capes collide with the UBE body.** Cloth that HDT-SMP moves only stays out of the body when the
+  physics has a body to collide with, and 3BA modpacks often have none (CBBE 3BA installed as "CBPC only"): skirts
+  and capes swung into the fuller UBE body. Every converted outfit whose physics moves cloth now carries its own: an
+  invisible, light copy of the UBE body (2,367 points, kept just under the skin, with the body sliders so it follows
+  your preset, on plain skeleton bones) and its own copy of the outfit's XML (meshes\!UBE\...\<piece>.ube.xml in the
+  output mod) that adds it as a still collision body. Only when the physics stays safe with it (no bone would fall,
+  no physics bone turns still); otherwise the outfit converts as before. Convert SMP outfits again to get it.
 - **SMP cloth keeps the body it collides with.** An HDT-SMP outfit whose physics XML collides its skirt or cape
   with the outfit's own body shape (`<per-triangle-shape name="3BA">`) lost that body: the conversion hides the old
   body, so the cloth had nothing to hit and swung into the UBE body. That body now stays as an invisible collision

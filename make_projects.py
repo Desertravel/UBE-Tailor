@@ -24,6 +24,7 @@ from xml.sax.saxutils import escape, quoteattr
 import numpy as np
 
 import bodytri
+import smp_body
 import smp_check
 import ube_field
 from nif_patch import SseNif
@@ -661,6 +662,34 @@ def smp_body_name(xml_text, tags, info, bodies, src_nif, ref_shapes):
     return old, want[0]
 
 
+def add_smp_body(base, nif_path, xml_text, refs, ref_names, log):
+    """Give an HDT-SMP outfit the UBE body to collide with (smp_body): its own XML copy in the output mod and the
+    invisible collision body in the project nif. The UBE body Ref when done, else None (the outfit stays as it was)."""
+    body = next((r for r in refs if r.key == "body"), None)
+    if not xml_text or body is None:
+        return None
+    try:
+        bones = smp_body.proxy_bones(body)
+        new = smp_body.new_xml(xml_text, bones)
+        shape_bones = {x.name: list(x.bone_names) for x in NifFile(nif_path).shapes if x.name not in ref_names}
+        if not smp_check.moving_bones(xml_text, shape_bones):
+            return None                          # nothing the physics moves: nothing to keep out of the body
+        if not new or not smp_body.safe(xml_text, new, shape_bones, bones):
+            log("   SMP: no collision body added (the physics XML would not stay safe with it)")
+            return None
+        rel = smp_body.xml_out(base)
+        out = os.path.join(os.path.dirname(os.path.dirname(BS)), "meshes", rel)
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        with open(out, "w", encoding="utf-8") as f:
+            f.write(new)
+        smp_body.add_proxy(nif_path, body, "meshes\\" + rel)
+    except Exception as e:                       # never fail a conversion over this
+        log(f"   SMP: no collision body added ({e!r})")
+        return None
+    log(f"   SMP: the cloth now collides with the UBE body ({len(smp_body.proxy_of(body)[0])} points, own XML {rel})")
+    return body
+
+
 def make_project(base, src, ref, refs, resolver, log=print, slots=None):
     base = base.replace("/", "\\")
     if src is None:
@@ -719,9 +748,10 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
     bodies = {rename.get(n, n) for n in bodies}
     ref_names = {r.shape for r in use}
     proxies = bodies & set(tags)
+    smp_proxy = add_smp_body(base, nif_path, xml_text, refs, ref_names, log)
 
     nif = SseNif(nif_path)
-    shapes = [s for s in nif.shapes if s["name"] not in ref_names]
+    shapes = [s for s in nif.shapes if s["name"] not in ref_names and s["name"] != smp_body.PROXY]
     pos = {s["block"]: nif.positions(s) for s in shapes}
     # where the game shows each point at rest (a ring made in its finger bone's space is stored around 0,0,0)
     gpos = {s["block"]: nif.to_global(s, pos[s["block"]]) for s in shapes}
@@ -803,6 +833,9 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
         conformed[s["name"]] = gpos[s["block"]] + d
         nif.set_positions(s, pos[s["block"]] + nif.to_local_delta(s, d))
         if s["name"] in proxies:
+            nif.unshade(s)
+    for s in nif.shapes:
+        if s["name"] == smp_body.PROXY:
             nif.unshade(s)
     if Vh is not None and feet_in:
         fs = next(s for s in nif.shapes if s["name"] == feet.shape)
@@ -976,6 +1009,11 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
         ok = idx < len(conformed[n])
         entries.append((n + name, idx[ok], diff[ok]))
         data_for.setdefault(name, []).append((n + name, n, None))
+    if smp_proxy:
+        for name, (ename, idx, D) in smp_body.slider_entries(smp_proxy):
+            if name in sliders and not (Vh is not None and name == HEEL):
+                entries.append((ename, idx, D))
+                data_for.setdefault(name, []).append((ename, smp_body.PROXY, None))
     write_osd(os.path.join(shape_dir, osd_name), entries)
     if os.path.isfile(os.path.join(shape_dir, osd_name + ".orig")):
         os.remove(os.path.join(shape_dir, osd_name + ".orig"))     # a "Fix clipping" copy of the old conversion
@@ -995,6 +1033,8 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
         L.append(f'        <Shape target={quoteattr(r.shape)} DataFolder={quoteattr(r.folder)} SmoothSeamNormalsAngle="120">{escape(r.shape)}</Shape>')
     for s in shapes:
         L.append(f'        <Shape target={quoteattr(s["name"])}>{escape(s["name"])}</Shape>')
+    if smp_proxy:
+        L.append(f'        <Shape target="{smp_body.PROXY}">{smp_body.PROXY}</Shape>')
     for name, attrs in sliders.items():
         rows = data_for.get(name, [])
         if not rows:
