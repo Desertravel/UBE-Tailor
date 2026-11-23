@@ -99,7 +99,7 @@ class SseNif:
         name = self.strings[name_i] if 0 <= name_i < len(self.strings) else f"block{bi}"
         return {"block": bi, "name": name, "nverts": nverts, "copies": copies, "bound_ofs": bound_ofs,
                 "skinned": skin >= 0, "skin_xf": self._skin_xf(skin) if skin >= 0 else None,
-                "xf": (t, r, scale), "xf_ofs": xf_ofs}
+                "xf": (t, r, scale), "xf_ofs": xf_ofs, "props_ofs": bound_ofs + 16 + 4}
 
     def _skin_xf(self, skin_bi):
         """(t, R, scale) of NiSkinData's skin transform (global -> skin space), or None. A skinned shape's points are
@@ -150,6 +150,11 @@ class SseNif:
         c = (lo + hi) / 2
         rad = float(np.linalg.norm(pos - c, axis=1).max())
         struct.pack_into("<4f", self.buf, shape["bound_ofs"], *c, rad)
+
+    def unshade(self, shape):
+        """Drop the shape's shader and alpha property: the game then never draws it, while HDT-SMP still uses its
+        points (that is how SMP collision proxies are made). The old property blocks stay, unreferenced."""
+        struct.pack_into("<2i", self.buf, shape["props_ofs"], -1, -1)
 
     def to_global(self, shape, local):
         """Points of the shape where the game shows them at rest: skinned shapes through their skin transform,

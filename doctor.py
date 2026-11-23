@@ -229,8 +229,23 @@ def check(deep=False, log=None):
                            "BodySlide reference project (\"... Ref ...\"), so that body is invisible in game (men "
                            "showed only head, hands and feet). Delete them, or build the real body project in "
                            "BodySlide (e.g. \"HIMBO Body - Vanilla Nevernude\", never a \"Ref\" one)", bare))
+    if smp_without_body():
+        out.append(Finding("smp_body", "info", "SMP cloth has no body to collide with: CBBE 3BA was installed without "
+                           "its SMP option (no SKSE\\Plugins\\hdtSkinnedMeshConfigs\\3BBB-Amazing.xml), so UBE's "
+                           "body collision object (3BBB UBE patch.esp) cannot work. Skirts and capes that move with "
+                           "physics pass into the body - on 3BA characters too. To get collision: reinstall CBBE 3BA "
+                           "with an SMP physics option, build \"UBE SE 2.0 Release SMP Object for 3BA configs - "
+                           "Player\" in BodySlide, and turn SMP on in game (CBBE 3BA hotkey or spell)"))
     say(f"health check done in {time.time() - t0:.0f} s")
     return out
+
+
+def smp_without_body():
+    """True when HDT-SMP is installed and UBE's SMP body collision object is there, but the CBBE 3BA physics XML it
+    names is not (CBBE 3BA installed as "CBPC only"): SMP cloth then collides with no body at all."""
+    smp = env.find(r"SKSE\Plugins\hdtSkinnedMeshConfigs\configs.xml")
+    obj = env.find(r"meshes\!UBE\Armor\Mu3B\3BBBCollisionArmorP_1.nif")
+    return bool(smp and obj and not env.find(r"SKSE\Plugins\hdtSkinnedMeshConfigs\3BBB-Amazing.xml"))
 
 
 BODY_MESHES = [r"actors\character\character assets\femalebody", r"actors\character\character assets\malebody",

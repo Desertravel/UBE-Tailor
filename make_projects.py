@@ -642,6 +642,25 @@ def push_out(P, V, F, FN, gap=MIN_GAP, band=CLIP_BAND, k=8):
 
 
 # ------------------------------------------------------------------ project
+def smp_body_name(xml_text, tags, info, bodies, src_nif, ref_shapes):
+    """(old body shape, XML shape name) when the outfit's HDT-SMP XML gives the body collision (tag "body") to a shape
+    the outfit does not have - 3BA conversions that renamed the CBBE body but kept the CBBE XML: the cloth never
+    collided with the body, for 3BA characters either. Only when the body's bones keep the XML safe (none would fall).
+    None otherwise."""
+    if not tags or bodies & set(tags):
+        return None
+    want = [n for n, t in tags.items()
+            if n not in info and n not in ref_shapes and any(x.lower() == "body" for x in t)]
+    main = [n for n in bodies if "femalebody" in info[n][0].lower()]
+    if len(want) != 1 or not main:
+        return None
+    by = {x.name: x for x in src_nif.shapes}
+    old = max(main, key=lambda n: len(by[n].verts))
+    if smp_check.falling(xml_text, {want[0]: list(by[old].bone_names)}) != []:
+        return None
+    return old, want[0]
+
+
 def make_project(base, src, ref, refs, resolver, log=print, slots=None):
     base = base.replace("/", "\\")
     if src is None:
@@ -687,9 +706,19 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
     if bodies and not use:       # body shape without known partitions: decide by texture
         use = [r for r in refs if any(r.key[:4] in info[n][0].lower() or (r.key == "body" and "femalebody" in info[n][0].lower()) for n in bodies)][:1]
     rename = {r.shape: r.shape + "_old3BA" for r in use if r.shape in info}
+    # HDT-SMP: an old body shape the outfit's physics XML names (<per-triangle-shape name="CBBE"> tagged "body") is
+    # what the skirt or cape collides with. Zapped, the cloth found nothing and fell into the UBE body when it moved.
+    # It stays as an invisible collision body: UBE shape, the author's bones (the XML stays safe), the body sliders.
+    xml_text = smp_check.read_xml(src, resolver) if smp_check.has_smp(src) else None
+    tags = smp_check.shape_tags(xml_text)
+    adopt = smp_body_name(xml_text, tags, info, bodies, src_nif, {r.shape for r in use})
+    if adopt:
+        rename[adopt[0]] = adopt[1]
+        log(f"   SMP: the physics XML collides with a body named {adopt[1]!r}, the outfit's body is {adopt[0]!r}: renamed")
     add_ube_refs(src, nif_path, [r.nif for r in use], rename)
     bodies = {rename.get(n, n) for n in bodies}
     ref_names = {r.shape for r in use}
+    proxies = bodies & set(tags)
 
     nif = SseNif(nif_path)
     shapes = [s for s in nif.shapes if s["name"] not in ref_names]
@@ -773,6 +802,8 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
             d = d + p
         conformed[s["name"]] = gpos[s["block"]] + d
         nif.set_positions(s, pos[s["block"]] + nif.to_local_delta(s, d))
+        if s["name"] in proxies:
+            nif.unshade(s)
     if Vh is not None and feet_in:
         fs = next(s for s in nif.shapes if s["name"] == feet.shape)
         if not fs["skinned"]:
@@ -814,8 +845,10 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
     bodytri.neutralize_source(nif_path)
 
     entries, zap_rows, hidden = [], [], {}
+    if proxies:
+        log(f"   SMP: kept {', '.join(sorted(proxies))} as the invisible body the cloth collides with (UBE shape)")
     for s in shapes:
-        if s["name"] in bodies:
+        if s["name"] in bodies - proxies:
             idx = np.arange(s["nverts"])
             entries.append((s["name"] + ZAP, idx, np.tile([0.0, 1.0, 0.0], (len(idx), 1))))
             zap_rows.append((s["name"] + ZAP, s["name"]))
@@ -845,7 +878,7 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
         for name, (attrs, _dn) in r.sliders.items():
             sliders.setdefault(name, attrs)
     U = np.vstack([Vh if Vh is not None and r is feet else r.verts for r in refs])
-    outfit = [s["name"] for s in shapes if s["name"] not in bodies]
+    outfit = [s["name"] for s in shapes if s["name"] not in bodies - proxies]
     bones, BW, _stb, _node = ube_weights.ref_weights(refs)
     try:
         Wo = outfit_bones(nif_path, set(outfit), bones)

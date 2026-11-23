@@ -1,6 +1,16 @@
 # Changelog
 
 ## Unreleased
+- **SMP cloth keeps the body it collides with.** An HDT-SMP outfit whose physics XML collides its skirt or cape
+  with the outfit's own body shape (`<per-triangle-shape name="3BA">`) lost that body: the conversion hides the old
+  body, so the cloth had nothing to hit and swung into the UBE body. That body now stays as an invisible collision
+  body in UBE shape, with the author's bones (the XML stays safe) and the body sliders. And where a 3BA conversion
+  renamed the body but kept the old CBBE XML (it names a "CBBE" body the outfit does not have), the body takes that
+  name - only when none of its bones would then fall (checked against the XML; Ninirim's Summer Casual would, so it
+  stays as it is).
+- **Health check: SMP without body collision.** It tells you when CBBE 3BA was installed without its SMP option
+  (3BBB-Amazing.xml missing): UBE's SMP body collision object then cannot work, and moving skirts and capes pass into
+  the body (3BA characters too) - with what to install and build to get collision.
 - **Right-click a converted piece: Open in Outfit Studio.** Opens its project straight in Outfit Studio, to touch it
   up by hand (save there, then Batch Build). Needs the Tailor started from MO2; a project made since the Tailor was
   opened needs the Tailor closed first (MO2 shows programs the files as they were when it started them).

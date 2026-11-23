@@ -139,6 +139,31 @@ def moving_bones_of(nif_path, resolver, body_shape=None):
     return moving_bones(text, shapes, shapes.get(body_shape, ()))
 
 
+def read_xml(nif_path, resolver):
+    """Text of the nif's HDT-SMP XML, or None (no SMP, or the XML is packed / missing)."""
+    rel = xml_rel(nif_path)
+    if rel is None:
+        return None
+    kind, src = resolver.resolve(rel)
+    if kind != "loose":
+        import env                       # the XML may sit outside meshes (SKSE\Plugins\hdtSkinnedMeshConfigs\...)
+        src = env.find(rel)
+        if not src:
+            return None
+    with open(src, encoding="utf-8", errors="replace") as f:
+        return f.read()
+
+
+def shape_tags(xml_text):
+    """{name: [tags]} of the <per-vertex-shape>/<per-triangle-shape> entries (empty when unreadable)."""
+    try:
+        root = ET.fromstring(re.sub(r"<\?xml[^>]*\?>", "", xml_text or "", count=1).strip())
+    except ET.ParseError:
+        return {}
+    return {el.get("name"): [(t.text or "").strip() for t in el.findall("tag")]
+            for el in root.iter() if el.tag in SHAPES and el.get("name")}
+
+
 def check_nif(nif_path, resolver):
     """None = no SMP; else (xml rel path, [(shape, bone)] or None if the XML is missing/unreadable)."""
     rel = xml_rel(nif_path)
