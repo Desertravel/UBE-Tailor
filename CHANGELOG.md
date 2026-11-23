@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- **BodySlide 6.** BodySlide 6 names its programs "BodySlide.exe" / "OutfitStudio.exe" (no "x64"); installed over
+  BodySlide 5, both are there and the Tailor started the old one. It now takes the newer file.
 - **Men had no genitals (TNG), women lost their pubic hair.** The Tailor took the genital addons of The New
   Gentleman, Schlongs of Skyrim and their addons (SOS Pubic Hair for Females, TRX Futanari) for clothing: it made
   UBE copies of them and, since there is no fabric over the vulva, moved them off slot 52 to a spare slot. TNG and

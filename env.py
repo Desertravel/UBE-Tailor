@@ -404,11 +404,14 @@ def t3_ref():
 
 
 def bodyslide_exe():
+    """The modpack's BodySlide program. BodySlide 5 ships "BodySlide x64.exe" (and a 32-bit "BodySlide.exe"),
+    BodySlide 6 only a 64-bit "BodySlide.exe": when 6 was installed over 5 both are there, so the newer file wins."""
     for d in loose_dirs():
-        for n in ("BodySlide x64.exe", "BodySlide.exe"):
-            p = os.path.join(d, "CalienteTools", "BodySlide", n)
-            if os.path.isfile(p):
-                return p
+        found = [p for p in (os.path.join(d, "CalienteTools", "BodySlide", n) for n in ("BodySlide x64.exe",
+                                                                                      "BodySlide.exe"))
+                 if os.path.isfile(p)]
+        if found:
+            return max(found, key=os.path.getmtime)
     return None
 
 
@@ -472,8 +475,9 @@ def outfit_studio_exe():
     b = bodyslide_exe()
     if not b:
         return None
-    return next((os.path.join(os.path.dirname(b), n) for n in ("OutfitStudio x64.exe", "OutfitStudio.exe")
-                 if os.path.isfile(os.path.join(os.path.dirname(b), n))), None)
+    found = [p for p in (os.path.join(os.path.dirname(b), n) for n in ("OutfitStudio x64.exe", "OutfitStudio.exe"))
+             if os.path.isfile(p)]
+    return max(found, key=os.path.getmtime) if found else None    # the newer one, as for BodySlide
 
 
 def launch_outfit_studio(project, osp):
