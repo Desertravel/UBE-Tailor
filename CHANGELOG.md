@@ -13,7 +13,9 @@
   invisible, light copy of the UBE body (2,367 points, kept just under the skin, with the body sliders so it follows
   your preset, on plain skeleton bones) and its own copy of the outfit's XML (meshes\!UBE\...\<piece>.ube.xml in the
   output mod) that adds it as a still collision body. Only when the physics stays safe with it (no bone would fall,
-  no physics bone turns still); otherwise the outfit converts as before. Convert SMP outfits again to get it.
+  no physics bone turns still), and only for outfits without a body collision of their own (Dark Apprentice's
+  "32colBody", evgnn's "bodycollision", "VirtualBody"...): a second collision body on top of the author's pinched
+  the cloth between them (a ribbon under the bust stretched to a point). Convert SMP outfits again to get it.
 - **SMP cloth keeps the body it collides with.** An HDT-SMP outfit whose physics XML collides its skirt or cape
   with the outfit's own body shape (`<per-triangle-shape name="3BA">`) lost that body: the conversion hides the old
   body, so the cloth had nothing to hit and swung into the UBE body. That body now stays as an invisible collision

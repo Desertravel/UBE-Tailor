@@ -120,6 +120,28 @@ def proxy_bones(body):
     return sorted(proxy_of(body)[3])
 
 
+def own_collision(xml_text, shape_bones):
+    """Name of a still shape the outfit's XML already collides its cloth with (the author's own body collision, like
+    Dark Apprentice's "32colBody"), or None. A second collision body on top of it pinched the cloth between the two
+    (a stretched ribbon under the bust). The ground plane does not count."""
+    moving = smp_check.moving_bones(xml_text, shape_bones) or set()
+    for name, tags in smp_check.shape_tags(xml_text).items():
+        if name == PROXY or "ground" in name.lower() or any("ground" in t.lower() for t in tags):
+            continue
+        bones = shape_bones.get(name)
+        if bones and not set(bones) & moving:
+            return name
+    return None
+
+
+def strip(text):
+    """An outfit XML copy without what new_xml added (the outfit's own XML again)."""
+    block = re.compile(r"\n\t<!-- UBE Tailor: the UBE body, for the cloth to collide with -->\n\t<per-triangle-shape name=\""
+                       + PROXY + r"\">.*?</per-triangle-shape>\n", re.S)
+    text = block.sub("", text, count=1)
+    return text.replace(f"\t<can-collide-with-tag>{TAG}</can-collide-with-tag>\n\t", "")
+
+
 def new_xml(text, bones):
     """The outfit's XML with the collision body added, or None when it cannot be read or would let a bone fall."""
     if not text or PROXY in text:

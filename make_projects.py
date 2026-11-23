@@ -674,6 +674,10 @@ def add_smp_body(base, nif_path, xml_text, refs, ref_names, log):
         shape_bones = {x.name: list(x.bone_names) for x in NifFile(nif_path).shapes if x.name not in ref_names}
         if not smp_check.moving_bones(xml_text, shape_bones):
             return None                          # nothing the physics moves: nothing to keep out of the body
+        own = smp_body.own_collision(xml_text, shape_bones)
+        if own:
+            log(f"   SMP: the outfit has its own body collision ({own}): no second one added")
+            return None
         if not new or not smp_body.safe(xml_text, new, shape_bones, bones):
             log("   SMP: no collision body added (the physics XML would not stay safe with it)")
             return None
