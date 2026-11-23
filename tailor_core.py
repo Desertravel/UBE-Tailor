@@ -232,8 +232,8 @@ def foreign_armas(aware=None):
         for a, src in src_of.items():
             d, fl = armas[a]
             _e, m3, _slots, rnam, races = arma_info(d)
-            if not m3 or rnam is None or rnam >> 24 != ui:
-                continue                                  # not an armor addon for the UBE races
+            if not m3 or rnam is None or rnam >> 24 != ui or is_genital(d):
+                continue                                  # not an armor addon for the UBE races, or genitals
             out.append(dict(patch=names.get(low, os.path.basename(path)), path=path, ms=ms, src=src, fid=a,
                             data=d, flags=fl))
     return out
@@ -520,8 +520,20 @@ def covered_armos(exclude=()):
     return cov, aware
 
 
+# Genital and pubic-hair addons (The New Gentleman, Schlongs of Skyrim and their addons) are not clothing. Converted
+# like an outfit, their addon left slot 52 (no fabric over the vulva) and TNG / SOS never showed them again: no man
+# had genitals, his own or any NPC's, and women lost their pubic hair. They are never touched.
+GENITAL_RX = re.compile(r"(?i)(^|\\)(tng|sos|sos_addon)\\|genital|schlong|pubic")
+
+
+def is_genital(arma_data):
+    """True for an armor addon whose male or female model is a genital / pubic-hair mesh (GENITAL_RX)."""
+    return any(GENITAL_RX.search(zstr(x).replace("/", "\\")) for t, x in subrecords(arma_data) if t in (b"MOD2", b"MOD3"))
+
+
 def patchable(path, name, cov):
-    """[(armo object id, [arma object ids])] of this plugin's own playable armors that no UBE patch covers."""
+    """[(armo object id, [arma object ids])] of this plugin's own playable armors that no UBE patch covers.
+    Genital addons (is_genital) are left out."""
     ms, recs = read_plugin(path, {b"ARMO", b"ARMA"})
     n = len(ms)
     armas = {fid & 0xFFFFFF: data for sig, fid, data, _fl in recs if sig == b"ARMA" and fid >> 24 >= n}
@@ -535,7 +547,7 @@ def patchable(path, name, cov):
                 continue
             a = struct.unpack("<I", x)[0]
             d = armas.get(a & 0xFFFFFF) if a >> 24 >= n else None
-            if d is None:
+            if d is None or is_genital(d):
                 continue
             _edid, m3, _slots, rnam, races = arma_info(d)
             if m3 and (rnam == NORD or NORD in races):

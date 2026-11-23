@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- **Men had no genitals (TNG), women lost their pubic hair.** The Tailor took the genital addons of The New
+  Gentleman, Schlongs of Skyrim and their addons (SOS Pubic Hair for Females, TRX Futanari) for clothing: it made
+  UBE copies of them and, since there is no fabric over the vulva, moved them off slot 52 to a spare slot. TNG and
+  SOS only show genitals on slot 52, so no man had any (the player either; picking one in the TNG menu changed
+  nothing), and his body showed the hole TNG fills. Genital and pubic-hair addons are now never touched; the next
+  patch rebuild takes them out of UBE Tailor's patches.
 - **SMP skirts and capes collide with the UBE body.** Cloth that HDT-SMP moves only stays out of the body when the
   physics has a body to collide with, and 3BA modpacks often have none (CBBE 3BA installed as "CBPC only"): skirts
   and capes swung into the fuller UBE body. Every converted outfit whose physics moves cloth now carries its own: an
