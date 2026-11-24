@@ -65,6 +65,66 @@ def osp_of(base):
     return os.path.join(mp.BS, "SliderSets", mp.safe(set_name_of(base)) + ".osp")
 
 
+def project_files(set_name):
+    """The files Outfit Studio saves for a converted piece's project: its .osp and the ShapeData .nif / .osd."""
+    osp = os.path.join(mp.BS, "SliderSets", mp.safe(set_name) + ".osp")
+    out = [osp]
+    try:
+        ss = ET.parse(osp).getroot().find("SliderSet")
+        folder = os.path.join(mp.BS, "ShapeData", ss.findtext("DataFolder"))
+        src = ss.findtext("SourceFile")
+        out += [os.path.join(folder, src), os.path.join(folder, src[:-4] + ".osd")]
+    except (OSError, ET.ParseError, AttributeError, TypeError):
+        pass
+    return out
+
+
+def project_stamp(set_name):
+    """{file: modified time} of a piece's project files (missing files left out)."""
+    st = {}
+    for f in project_files(set_name):
+        try:
+            st[f] = os.path.getmtime(f)
+        except OSError:
+            pass
+    return st
+
+
+def mark_opened(set_name):
+    """Opened in Outfit Studio from the Tailor: remember how its project files looked (check_hand_edits)."""
+    db = load_db()
+    if set_name in db:
+        db[set_name]["os_open"] = project_stamp(set_name)
+        save_db(db)
+
+
+def check_hand_edits(studio_running):
+    """Pieces opened in Outfit Studio whose project files changed since are 'edited by hand' (db[set]["hand"]):
+    Fix clipping, Re-convert and the health check's Fix all leave them alone from then on. A piece Outfit Studio
+    closed without saving loses its mark. Returns the set names newly marked."""
+    db = load_db()
+    marked, changed = [], False
+    for name, e in db.items():
+        if not isinstance(e, dict) or "os_open" not in e:
+            continue
+        now = project_stamp(name)
+        if any(now.get(f) != t for f, t in e["os_open"].items()):
+            e["hand"] = True
+            e.pop("os_open")
+            marked.append(name)
+            changed = True
+        elif not studio_running:
+            e.pop("os_open")
+            changed = True
+    if changed:
+        save_db(db)
+    return marked
+
+
+def hand_edited(db, set_name):
+    return bool(db.get(set_name, {}).get("hand"))
+
+
 def running(exe):
     """True if a process with this file name runs. tasklist writes in the console's code page (German, French...
     Windows: umlauts, accents), which Python's default decoding can fail on, leaving stdout None: decode leniently

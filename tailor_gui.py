@@ -150,9 +150,10 @@ class App:
         self.btn_patch = ttk.Button(top, text="Update patch", command=self.do_patch)
         self.btn_doc = ttk.Button(top, text="Health check", command=self.do_doctor)
         self.btn_bs = ttk.Button(top, text="BodySlide", command=self.do_bodyslide)
+        self.btn_os = ttk.Button(top, text="Outfit Studio", command=self.do_outfit_studio)
         self.btn_stop = ttk.Button(top, text="Stop", command=self.do_stop, state="disabled", style="Danger.TButton")
-        for b in (self.btn_scan, self.btn_conv, self.btn_bs, self.btn_qa, self.btn_fix, self.btn_patch, self.btn_doc,
-                  self.btn_stop):
+        for b in (self.btn_scan, self.btn_conv, self.btn_bs, self.btn_os, self.btn_qa, self.btn_fix, self.btn_patch,
+                  self.btn_doc, self.btn_stop):
             b.pack(side="left", padx=(0, 6))
 
         flt = ttk.Frame(root, padding=(14, 4))
@@ -177,6 +178,9 @@ class App:
         self.count = ttk.Label(flt, text="", style="Sub.TLabel")
         self.count.pack(side="right")
 
+        ttk.Label(root, style="Sub.TLabel", padding=(14, 0), text=(
+            "Tip: right-click a piece or a mod for more - Fix clipping for just that piece, outfit or mod, and Open "
+            "in Outfit Studio to touch it up by hand (the Tailor then leaves your edits alone).")).pack(anchor="w")
         mid = ttk.Frame(root, padding=(14, 6))
         mid.pack(fill="both", expand=True)
         self._mid = mid
@@ -275,14 +279,19 @@ class App:
         """Every 3 s: does MO2 have the output mod and plugin ticked, and has BodySlide just been closed (then the
         Tailor scans again, so the patch uses what BodySlide built)."""
         import merged_patch
-        was = False
+        was = was_os = False
         while True:
             try:
                 bs = tc.running("BodySlide x64.exe") or tc.running("BodySlide.exe")
+                ost = tc.running("OutfitStudio x64.exe") or tc.running("OutfitStudio.exe")
                 self.q.put(("mo2", merged_patch.mo2_status()))
                 if was and not bs:
                     self.q.put(("autoscan", None))
-                was = bs
+                if was_os and not ost:
+                    marked = tc.check_hand_edits(False)
+                    if marked:
+                        self.q.put(("hand", marked))
+                was, was_os = bs, ost
             except Exception:
                 pass
             time.sleep(3)
@@ -358,6 +367,12 @@ class App:
                     self.root.clipboard_append(val)
                     self.say("Report copied. Paste it (Ctrl+V) in your bug report on Nexus or GitHub. It has no "
                              "personal data: your user folder is replaced by %USERPROFILE%.")
+                elif kind == "hand":
+                    self.db = tc.load_db()
+                    self.say(f"Edited by hand in Outfit Studio: {', '.join(n[11:] for n in val[:3])}"
+                             + (f" and {len(val) - 3} more" if len(val) > 3 else "")
+                             + " - Fix clipping and Re-convert leave it alone now. Run Batch Build to see it in game.")
+                    self.populate()
                 elif kind == "fix_new":
                     self.root.after(300, lambda v=val: self.offer_fix_new(v))   # after the busy state clears
                 elif kind == "doctor":
@@ -377,7 +392,8 @@ class App:
     def set_busy(self, b):
         self.busy = b
         self.stop_flag = False
-        for w in (self.btn_scan, self.btn_conv, self.btn_bs, self.btn_qa, self.btn_fix, self.btn_patch, self.btn_doc):
+        for w in (self.btn_scan, self.btn_conv, self.btn_bs, self.btn_os, self.btn_qa, self.btn_fix, self.btn_patch,
+                  self.btn_doc):
             w["state"] = "disabled" if b else "normal"
         self.btn_stop["state"] = "normal" if b else "disabled"
         if not b:
@@ -435,7 +451,7 @@ class App:
     def grade_text(self, it):
         qa = self.db.get(it["set"], {}).get("qa")
         if not qa:
-            return "", None
+            return ("edited by hand", None) if self.db.get(it["set"], {}).get("hand") else ("", None)
         worst = max(qa.get("in0", 0), qa.get("in1", 0))
         text, g = f"{tc.GRADES[qa['grade']]} ({worst} pts inside)", qa["grade"]
         mg = qa.get("motion")
@@ -444,6 +460,8 @@ class App:
             g = max(g, mg)                       # the worse of the two colours the row
         if self.db.get(it["set"], {}).get("fixed"):
             text += " · clipping fixed"
+        if self.db.get(it["set"], {}).get("hand"):
+            text += " · edited by hand"
         return text, g
 
     def populate(self):
@@ -515,11 +533,13 @@ class App:
         if it:
             if it["state"] in conv:
                 menu.add_command(label="Fix clipping: this piece", command=lambda: self.open_fix([it]))
-                folder = os.path.dirname(it["base"]).lower()
-                outfit = [i for i in mod if os.path.dirname(i["base"]).lower() == folder]
+                keys = tc._outfit_keys(self.items)
+                key = keys.get(it["base"].lower())
+                outfit = [i for i in mod if key is not None and keys.get(i["base"].lower()) == key]
                 if 1 < len(outfit) < len(mod):
-                    menu.add_command(label=f"Fix clipping: this outfit ({os.path.basename(folder) or folder}, "
-                                           f"{len(outfit)} pieces)", command=lambda: self.open_fix(outfit))
+                    folder = os.path.basename(os.path.dirname(it["base"]))
+                    menu.add_command(label=f"Fix clipping: this outfit ({folder}, {len(outfit)} pieces)",
+                                     command=lambda: self.open_fix(outfit))
             else:
                 menu.add_command(label="Fix clipping: this piece (convert it first)", state="disabled")
         if self.text.get().strip() and 0 < len(shown) < len(mod):
@@ -536,6 +556,18 @@ class App:
         menu.tk_popup(ev.x_root, ev.y_root)
         return "break"
 
+    def do_outfit_studio(self):
+        """Open the one ticked converted piece in Outfit Studio (the same as right-click > Open in Outfit Studio)."""
+        sel = self.chosen(("built", "done"))
+        if len(sel) != 1:
+            messagebox.showinfo("UBE Tailor", (
+                "Tick one converted piece (click it in the list), then press Outfit Studio - or right-click the piece "
+                "and pick 'Open in Outfit Studio'.\n\nTouch it up there, save the project (File > Save Project), "
+                "close Outfit Studio and run Batch Build. The Tailor marks the piece 'edited by hand' and Fix "
+                "clipping / Re-convert leave it alone."))
+            return
+        self.open_outfit_studio(sel[0])
+
     def open_outfit_studio(self, it):
         name = tc.set_name_of(it["base"])
         path = tc.osp_of(it["base"])
@@ -546,7 +578,11 @@ class App:
             return
         ok, msg = env.launch_outfit_studio(name, path)
         self.say(msg)
-        if not ok:
+        if ok:
+            tc.mark_opened(name)            # when its project changes, the piece is 'edited by hand'
+            self.say("   When you save it there, the Tailor marks it 'edited by hand': Fix clipping and Re-convert "
+                     "leave it alone (you can still choose to include it).")
+        else:
             messagebox.showinfo("UBE Tailor", msg)
 
     def check_visible(self, on):
@@ -731,6 +767,14 @@ class App:
         if not sel:
             messagebox.showinfo("UBE Tailor", self.why_nothing())
             return
+        db = tc.load_db()
+        hand = [i for i in sel if tc.hand_edited(db, i["set"])]
+        if hand and not messagebox.askyesno("UBE Tailor", (
+                f"{len(hand)} of the ticked pieces were edited by hand in Outfit Studio. Converting them again "
+                "replaces your edits.\n\nConvert those too? (No = convert the others and leave them as they are)")):
+            sel = [i for i in sel if i not in hand]
+            if not sel:
+                return
         if tc.running("SkyrimSE.exe"):
             messagebox.showwarning("UBE Tailor", "The game is running. Close it first.")
             return
@@ -856,12 +900,19 @@ class App:
             return
         FixWindow(self, [i["set"] for i in pieces], presets, ticked=ticked)
 
-    def run_fix(self, sets, presets, again=False):
-        """Fix clipping for these pieces; pieces already fixed for these presets are skipped unless again=True."""
+    def run_fix(self, sets, presets, again=False, include_hand=False):
+        """Fix clipping for these pieces; pieces already fixed for these presets are skipped unless again=True,
+        pieces edited by hand in Outfit Studio unless include_hand=True."""
         import fix_clip
 
         def work():
             t0 = time.time()
+            if not include_hand:
+                db0 = tc.load_db()
+                hand = [s for s in sets if tc.hand_edited(db0, s)]
+                if hand:
+                    self.say(f"{len(hand)} piece(s) edited by hand in Outfit Studio left alone (tick 'Also pieces "
+                             "edited by hand' in the Fix clipping window to include them).")
             done = [] if again else fix_clip.done_for(tc.load_db(), sets, presets)
             if again:
                 self.say(f"Fixing every one of the {len(sets)} piece(s) again, also the ones fixed before.")
@@ -897,7 +948,8 @@ class App:
                                  f"(worst preset {tc.GRADES[g0]} -> {tc.GRADES[g1]})")
                 left = (time.time() - t0) / max(i, 1) * (total - i)
                 self.q.put(("prog", (i, total, f"Fixing clipping {i}/{total}   about {left / 60:.0f} min left")))
-            fix_clip.fix_many(sets, presets, self.live_workers, on, lambda: self.stop_flag, again=again)
+            fix_clip.fix_many(sets, presets, self.live_workers, on, lambda: self.stop_flag, again=again,
+                              include_hand=include_hand)
             self.say(f"Fix clipping: {n['fixed']} fixed, {n['fine']} already fit every preset, {n['unchanged']} "
                      f"could not be improved without harm (left as they were), {n['failed']} failed  "
                      f"({time.time() - t0:.0f} s)" + ("  - stopped" if self.stop_flag else ""))
@@ -1049,6 +1101,9 @@ class FixWindow:
         self.again = tk.BooleanVar(value=False)
         ttk.Checkbutton(opts, text="Fix every piece again, also the ones already fixed (takes long)",
                         variable=self.again, command=self.refresh).pack(anchor="w")
+        self.hand = tk.BooleanVar(value=False)
+        ttk.Checkbutton(opts, text="Also pieces edited by hand in Outfit Studio (overwrites your edits)",
+                        variable=self.hand).pack(anchor="w")
         self.ask_after = tk.BooleanVar(value=env.S.get("fix_after_convert", "ask") == "ask")
         ttk.Checkbutton(opts, text="After converting new outfits, ask me to fix them", variable=self.ask_after,
                         command=self.save_ask).pack(anchor="w")
@@ -1123,7 +1178,7 @@ class FixWindow:
         env.S["fix_presets"] = presets
         env.save_settings(env.S)
         self.win.destroy()
-        self.app.run_fix(self.sets, presets, again=self.again.get())
+        self.app.run_fix(self.sets, presets, again=self.again.get(), include_hand=self.hand.get())
 
 
 def ask_edition(root):

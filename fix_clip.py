@@ -421,7 +421,7 @@ def done_for(db, sets, presets):
             and db.get(s, {}).get("hb") == hide_body.VERSION]
 
 
-def fix_many(sets, presets, workers=6, on=None, stop=None, write=True, again=False):
+def fix_many(sets, presets, workers=6, on=None, stop=None, write=True, again=False, include_hand=False):
     """Fix many projects for the presets, in worker processes. on(i, total, set name, report or None, error or
     None). Fixed pieces are marked in the database: db[set]["fixed"] = presets (a new conversion clears it); the
     fit grade of the preset picked in the Tailor is updated too. Pieces already done for these presets are
@@ -431,6 +431,8 @@ def fix_many(sets, presets, workers=6, on=None, stop=None, write=True, again=Fal
     if not again:
         skip = set(done_for(db, sets, presets))
         sets = [s for s in sets if s not in skip]
+    if not include_hand:                         # edited by hand in Outfit Studio: never overwritten unasked
+        sets = [s for s in sets if not tc.hand_edited(db, s)]
     pvs = {p: tc.preset_values(p) for p in set(presets) | {"-Zeroed Sliders-"}}
     jobs = [(s, db.get(s, {}).get("heel", False), presets, pvs, write) for s in sets]
     results = {}
@@ -447,6 +449,8 @@ def fix_many(sets, presets, workers=6, on=None, stop=None, write=True, again=Fal
                     else:
                         db[name].pop("fixed", None)
                     db[name]["clip"] = sorted(presets)
+                    if "os_open" in db[name]:            # Outfit Studio still open on it: our write is not a hand edit
+                        db[name]["os_open"] = tc.project_stamp(name)
                     if "hide_error" not in rep:
                         import hide_body
                         db[name]["hb"] = hide_body.VERSION

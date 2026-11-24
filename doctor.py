@@ -71,7 +71,7 @@ def check(deep=False, log=None):
     if lo:
         out.append(Finding("left_out", "fix", f"{len(lo)} piece(s) left out of outfits you converted - still 3BA, "
                            "they sink into or float over the UBE body", [i["base"] for i in lo], "convert"))
-    old = tc.outdated(items)
+    old = [i for i in tc.outdated(items) if not tc.hand_edited(db, i.get("set", ""))]   # hand edits stay
     if old:
         out.append(Finding("outdated", "fix", f"{len(old)} piece(s) converted with an older version of the Tailor",
                            [i["base"] for i in old], "convert"))

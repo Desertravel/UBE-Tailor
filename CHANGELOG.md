@@ -1,6 +1,12 @@
 # Changelog
 
 ## 0.9.5-beta (2026-11-24)
+- **Touch up a piece by hand, and keep it.** New "Outfit Studio" button (tick one converted piece) next to
+  BodySlide, and right-click > Open in Outfit Studio. When you save the project there, the Tailor marks the piece
+  "edited by hand": Fix clipping, Re-convert and the health check's Fix all leave it alone (Fix clipping has a tick
+  to include such pieces; Re-convert asks). A line above the list now says what right-click offers.
+- **Right-click: Fix clipping for this outfit** (its pieces only, not the whole collection plugin) and for the
+  pieces your search shows.
 - **Health check stops coming back for other mods' missing meshes.** It counted every armor pointing at a UBE mesh
   nobody built, also those of hand-made UBE mods (UBE Vanilla Armor's Stormcloak boots, UBE's werewolf skins),
   which Update patch cannot change, so the window opened at every start. Now only the Tailor's own pieces count.
