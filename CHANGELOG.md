@@ -1,6 +1,11 @@
 # Changelog
 
 ## Unreleased
+- **Fix clipping only where it is needed.** After converting new outfits the Tailor asks whether to fix clipping
+  for just those pieces, with your presets from last time (Yes / No / Don't ask again; the Fix clipping window has
+  the tick to turn the question back on). The Fix clipping window shows how many pieces are left to fix and how
+  many are done already, and has a tick to fix every piece again.
+- **Fix clipping is about 20% faster** (same results).
 - **Workers can change while the Tailor works.** Raise or lower the Workers box during a long Convert, Fix clipping
   or Check fit: more workers start at once, and when you lower it, workers finish the piece they are on and close
   (their memory comes back). No more Stop and start again.

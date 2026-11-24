@@ -352,6 +352,8 @@ class App:
                     self.ask_new(val)
                 elif kind == "fix":
                     self.root.after(300, lambda v=val: self.offer_fix(*v))   # after the busy state clears
+                elif kind == "fix_new":
+                    self.root.after(300, lambda v=val: self.offer_fix_new(v))   # after the busy state clears
                 elif kind == "doctor":
                     self.root.after(300, lambda v=val: self.show_doctor(v))
                 elif kind == "mo2":
@@ -707,7 +709,42 @@ class App:
                 self.say(self.build_hint("the patch switches each piece to its UBE mesh once it is built; run Fix "
                                          "clipping first if you want it"))
             self.rescan()
+            if made and not self.stop_flag and env.S.get("fix_after_convert", "ask") == "ask":
+                self.q.put(("fix_new", list(made)))
         self.run(work)
+
+    def offer_fix_new(self, made):
+        """After a conversion: Fix clipping just for the new pieces? Yes / No / Don't ask again (FixWindow has the
+        tick to turn the question back on)."""
+        presets = [p for p in (env.S.get("fix_presets") or ()) if p in (self.preset["values"] or ())]
+        win = tk.Toplevel(self.root, bg=BG, padx=18, pady=14)
+        win.title("Fix clipping")
+        win.transient(self.root)
+        ttk.Label(win, text=f"Fix clipping for the {len(made)} new piece(s)?", style="Title.TLabel").pack(anchor="w")
+        if presets:
+            text = (f"Only the pieces you just converted, for your presets from last time: {', '.join(presets)}. "
+                    "Pieces fixed before are not touched.")
+        else:
+            text = "Only the pieces you just converted. You pick the presets in the next window."
+        ttk.Label(win, style="Sub.TLabel", wraplength=520, justify="left", text=text).pack(anchor="w", pady=(4, 12))
+        bot = ttk.Frame(win)
+        bot.pack(fill="x")
+
+        def yes():
+            win.destroy()
+            if presets:
+                self.run_fix(made, presets)
+            else:
+                FixWindow(self, made, list(self.preset["values"]) or tc.list_presets(), ticked=True)
+
+        def never():
+            env.S["fix_after_convert"] = "never"
+            env.save_settings(env.S)
+            win.destroy()
+            self.say("The Tailor will not ask again after converting (turn it back on in the Fix clipping window).")
+        ttk.Button(bot, text="Yes, fix them", command=yes, style="Accent.TButton").pack(side="left")
+        ttk.Button(bot, text="No", command=win.destroy).pack(side="left", padx=6)
+        ttk.Button(bot, text="Don't ask again", command=never).pack(side="left")
 
     def do_qa(self):
         sel = self.chosen(("built", "done"))
@@ -741,12 +778,15 @@ class App:
             return
         FixWindow(self, [i["set"] for i in pieces], presets, ticked=bool(sel))
 
-    def run_fix(self, sets, presets):
+    def run_fix(self, sets, presets, again=False):
+        """Fix clipping for these pieces; pieces already fixed for these presets are skipped unless again=True."""
         import fix_clip
 
         def work():
             t0 = time.time()
-            done = fix_clip.done_for(tc.load_db(), sets, presets)
+            done = [] if again else fix_clip.done_for(tc.load_db(), sets, presets)
+            if again:
+                self.say(f"Fixing every one of the {len(sets)} piece(s) again, also the ones fixed before.")
             if done:
                 self.say(f"{len(done)} piece(s) were already fixed or checked for these presets - skipped.")
             if len(done) == len(sets):
@@ -779,7 +819,7 @@ class App:
                                  f"(worst preset {tc.GRADES[g0]} -> {tc.GRADES[g1]})")
                 left = (time.time() - t0) / max(i, 1) * (total - i)
                 self.q.put(("prog", (i, total, f"Fixing clipping {i}/{total}   about {left / 60:.0f} min left")))
-            fix_clip.fix_many(sets, presets, self.live_workers, on, lambda: self.stop_flag)
+            fix_clip.fix_many(sets, presets, self.live_workers, on, lambda: self.stop_flag, again=again)
             self.say(f"Fix clipping: {n['fixed']} fixed, {n['fine']} already fit every preset, {n['unchanged']} "
                      f"could not be improved without harm (left as they were), {n['failed']} failed  "
                      f"({time.time() - t0:.0f} s)" + ("  - stopped" if self.stop_flag else ""))
@@ -926,6 +966,20 @@ class FixWindow:
             "Experimental - check the pieces in game.")).pack(anchor="w", pady=(0, 8))
         bot = ttk.Frame(win)
         bot.pack(side="bottom", fill="x", pady=(10, 0))
+        opts = ttk.Frame(win)
+        opts.pack(side="bottom", fill="x", pady=(8, 0))   # above the buttons, before the list takes the room
+        self.again = tk.BooleanVar(value=False)
+        ttk.Checkbutton(opts, text="Fix every piece again, also the ones already fixed (takes long)",
+                        variable=self.again, command=self.refresh).pack(anchor="w")
+        self.ask_after = tk.BooleanVar(value=env.S.get("fix_after_convert", "ask") == "ask")
+        ttk.Checkbutton(opts, text="After converting new outfits, ask me to fix them", variable=self.ask_after,
+                        command=self.save_ask).pack(anchor="w")
+        try:
+            import fix_clip
+            self._done_for = lambda p: fix_clip.done_for(self.db, sets, p)
+            self.db = tc.load_db()
+        except Exception:
+            self._done_for = None
         box = tk.Frame(win, bg=BG)
         box.pack(fill="both", expand=True)
         canvas = tk.Canvas(box, bg=BG, highlightthickness=0)
@@ -966,9 +1020,20 @@ class FixWindow:
         return [n for n, v in self.picks.items() if v.get()]
 
     def refresh(self):
-        n = len(self.chosen())
-        self.count["text"] = f"{n} of {len(self.picks)} presets ticked"
+        chosen = self.chosen()
+        n = len(chosen)
+        text = f"{n} of {len(self.picks)} presets ticked"
+        if n and self.again.get():
+            text += f" - all {len(self.sets)} pieces"
+        elif n and self._done_for:
+            done = len(self._done_for(chosen))
+            text += f" - {len(self.sets) - done} piece(s) to fix, {done} already done (skipped)"
+        self.count["text"] = text
         self.ok["state"] = "normal" if n else "disabled"
+
+    def save_ask(self):
+        env.S["fix_after_convert"] = "ask" if self.ask_after.get() else "never"
+        env.save_settings(env.S)
 
     def tick(self, on):
         for v in self.picks.values():
@@ -980,7 +1045,7 @@ class FixWindow:
         env.S["fix_presets"] = presets
         env.save_settings(env.S)
         self.win.destroy()
-        self.app.run_fix(self.sets, presets)
+        self.app.run_fix(self.sets, presets, again=self.again.get())
 
 
 def ask_edition(root):
