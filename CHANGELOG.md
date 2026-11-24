@@ -1,6 +1,10 @@
 # Changelog
 
 ## 0.9.5-beta (2026-11-24)
+- **Copy report**: copies a short report folded in a Nexus [spoiler] (one line in a comment until clicked) and saves
+  the whole one as "UBE Tailor report.txt" next to the Tailor (the folder opens), to attach on GitHub or Discord.
+- **Health check: a piece built as one mesh counts as built.** Projects without weights (plugs, some rings) build
+  a single <name>.nif, not _0/_1; the check said "never built" for them after every Batch Build.
 - **Touch up a piece by hand, and keep it.** New "Outfit Studio" button (tick one converted piece) next to
   BodySlide, and right-click > Open in Outfit Studio. When you save the project there, the Tailor marks the piece
   "edited by hand": Fix clipping, Re-convert and the health check's Fix all leave it alone (Fix clipping has a tick

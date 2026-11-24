@@ -153,7 +153,10 @@ def check(deep=False, log=None):
     built = built_meshes()
     unbuilt, stale = [], []
     for i in conv:
-        rel = (i["base"] + tc.mesh_files(i["base"])[0]).lower()
+        # BodySlide writes <name>_0/_1.nif, or one <name>.nif when the project has no weights (GenWeights="false",
+        # e.g. a plug or a ring): either one counts as built
+        rels = [(i["base"] + x).lower() for x in dict.fromkeys([tc.mesh_files(i["base"])[0], "_1.nif", ".nif"])]
+        rel = next((r for r in rels if r in built), rels[0])
         osp = tc.osp_of(i["base"])
         if rel not in built:
             unbuilt.append(i["base"])

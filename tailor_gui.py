@@ -363,19 +363,21 @@ class App:
                 elif kind == "fix":
                     self.root.after(300, lambda v=val: self.offer_fix(*v))   # after the busy state clears
                 elif kind == "clip":
+                    full, short = val
                     self.root.clipboard_clear()
-                    self.root.clipboard_append(val)
-                    # also as a file next to the Tailor, to attach to a bug report; the folder opens with it selected
+                    self.root.clipboard_append(short)
+                    # the whole report as a file next to the Tailor (GitHub, Discord); the folder opens with it selected
                     path = os.path.join(env.TOOL, "UBE Tailor report.txt")
                     try:
                         with open(path, "w", encoding="utf-8") as f:
-                            f.write(val.strip("`\n") + "\n")
+                            f.write(full + "\n")
                         subprocess.Popen(["explorer", "/select,", path])
-                        where = f" and saved as '{os.path.basename(path)}' in the Tailor's folder (opened for you)"
+                        where = f", the whole one saved as '{os.path.basename(path)}' in the Tailor's folder (opened)"
                     except OSError:
                         where = ""
-                    self.say(f"Report copied{where}. Paste it (Ctrl+V) or attach the file in your bug report on "
-                             "Nexus or GitHub. It has no personal data: your user folder is replaced by %USERPROFILE%.")
+                    self.say(f"Short report copied{where}. On Nexus paste it (Ctrl+V): it shows folded, one click "
+                             "opens it. On GitHub or Discord attach the file. No personal data: your user folder is "
+                             "replaced by %USERPROFILE%.")
                 elif kind == "hand":
                     self.db = tc.load_db()
                     self.say(f"Edited by hand in Outfit Studio: {', '.join(n[11:] for n in val[:3])}"
@@ -691,12 +693,19 @@ class App:
                 lines += [f"  [{f.level}] {f.title}" for f in found] or ["  all good"]
             except Exception as e:
                 lines.append(f"  could not run: {e!r}")
+            head = list(lines)
             lines += ["", "Log (last lines):", log_tail]
-            text = "\n".join(lines)
+            # the file gets everything; the clipboard a short version folded in a Nexus [spoiler] (a comment shows
+            # one line until clicked): long health-check lines cut, only the last 25 log lines
+            short = [(x if len(x) <= 160 else x[:157] + "...") for x in head]
+            short += ["", "Log (last lines):"] + log_tail.splitlines()[-25:]
             home = os.path.expanduser("~")
-            for h in {home, home.replace("\\", "/")}:
-                text = text.replace(h, "%USERPROFILE%")
-            self.q.put(("clip", "```\n" + text + "\n```"))
+
+            def scrub(t):
+                for h in {home, home.replace("\\", "/")}:
+                    t = t.replace(h, "%USERPROFILE%")
+                return t
+            self.q.put(("clip", (scrub("\n".join(lines)), "[spoiler]\n" + scrub("\n".join(short)) + "\n[/spoiler]")))
         self.run(work)
 
     # ------------------------------------------------------------ health check
