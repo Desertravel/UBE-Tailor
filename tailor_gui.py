@@ -114,6 +114,7 @@ class App:
         ttk.Button(links, text="Modpack...", command=lambda: SetupWindow(root)).pack(side="left", padx=(0, 6))
         ttk.Button(links, text="Requirements", command=lambda: RequirementsWindow(root, None, first=True)).pack(side="left")
         ttk.Button(links, text="Guide", command=lambda: WelcomeWindow(root)).pack(side="left", padx=(6, 0))
+        ttk.Button(links, text="Copy report", command=self.do_report).pack(side="left", padx=(6, 0))
         # preset, workers, re-convert: up here, so a narrow window never hides them behind the buttons
         opts = ttk.Frame(side)
         opts.pack(anchor="w", pady=(6, 0))
@@ -352,6 +353,11 @@ class App:
                     self.ask_new(val)
                 elif kind == "fix":
                     self.root.after(300, lambda v=val: self.offer_fix(*v))   # after the busy state clears
+                elif kind == "clip":
+                    self.root.clipboard_clear()
+                    self.root.clipboard_append(val)
+                    self.say("Report copied. Paste it (Ctrl+V) in your bug report on Nexus or GitHub. It has no "
+                             "personal data: your user folder is replaced by %USERPROFILE%.")
                 elif kind == "fix_new":
                     self.root.after(300, lambda v=val: self.offer_fix_new(v))   # after the busy state clears
                 elif kind == "doctor":
@@ -466,7 +472,13 @@ class App:
         c = Counter(i["state"] for i in kind)
         for key, lab in self.chips.items():
             lab["text"] = f"{c.get(key, 0):,}"
-        self.count["text"] = f"shown {len(vis):,}    selected {len(self.checked):,}    of {len(kind):,}"
+        hint = ""
+        text = self.text.get().lower()
+        if text and self.state.get() != ALL:
+            more = sum(1 for i in kind if text in i["base"].lower() or text in i["plugin"].lower()) - len(vis)
+            if more > 0:
+                hint = f"    (+{more:,} more match: set State to '{ALL}')"
+        self.count["text"] = f"shown {len(vis):,}    selected {len(self.checked):,}    of {len(kind):,}" + hint
 
     def on_click(self, ev):
         row = self.tree.identify_row(ev.y)
@@ -483,16 +495,34 @@ class App:
         return "break"
 
     def on_right_click(self, ev):
-        """Right-click on a converted piece: open its project in Outfit Studio, to touch it up by hand."""
+        """Right-click on a piece: Fix clipping for it or its whole mod, open it in Outfit Studio. On a mod row:
+        Fix clipping for every converted piece of that mod (search the mod's name, right-click it, done)."""
         row = self.tree.identify_row(ev.y)
-        it = next((i for i in self.items if i["base"].lower() == row), None) if row and not row.startswith("p:") else None
-        if not it:
+        if not row:
             return
-        menu = tk.Menu(self.root, tearoff=0)
-        if it["state"] in ("built", "done"):
-            menu.add_command(label="Open in Outfit Studio", command=lambda: self.open_outfit_studio(it))
+        conv = ("built", "done")
+        if row.startswith("p:"):
+            plugin, it = row[2:], None
         else:
-            menu.add_command(label="Open in Outfit Studio (convert it first)", state="disabled")
+            it = next((i for i in self.items if i["base"].lower() == row), None)
+            if not it:
+                return
+            plugin = it["plugin"]
+        mod = [i for i in self.items if i["plugin"] == plugin and i["state"] in conv]
+        menu = tk.Menu(self.root, tearoff=0)
+        if it:
+            if it["state"] in conv:
+                menu.add_command(label="Fix clipping: this piece", command=lambda: self.open_fix([it]))
+            else:
+                menu.add_command(label="Fix clipping: this piece (convert it first)", state="disabled")
+        menu.add_command(label=f"Fix clipping: all of {plugin} ({len(mod)} converted)",
+                         command=lambda: self.open_fix(mod), state="normal" if mod else "disabled")
+        if it:
+            menu.add_separator()
+            if it["state"] in conv:
+                menu.add_command(label="Open in Outfit Studio", command=lambda: self.open_outfit_studio(it))
+            else:
+                menu.add_command(label="Open in Outfit Studio (convert it first)", state="disabled")
         menu.tk_popup(ev.x_root, ev.y_root)
         return "break"
 
@@ -581,6 +611,38 @@ class App:
     def live_workers(self):
         """How many workers a running job should use now (read from its thread; set by the Workers box)."""
         return self._workers_now
+
+    def do_report(self):
+        """Copy a short report for a bug report to the clipboard: versions, what the list holds, the health check
+        and the end of the log. The user's own folder is replaced by %USERPROFILE%."""
+        if self.busy:
+            return
+        log_tail = self.log.get("end-160l", "end").strip()
+
+        def work():
+            import doctor
+            self.say("Making the report (runs the health check)...")
+            gv = env.game_version()
+            bs = env.bodyslide_exe()
+            lines = [f"UBE Tailor {env.VERSION}",
+                     "Skyrim " + (".".join(map(str, gv)) if gv else "version unknown"),
+                     "BodySlide: " + (f"{os.path.basename(bs)} ({time.strftime('%Y-%m-%d', time.localtime(os.path.getmtime(bs)))})"
+                                      f", add-ons {'yes' if env.bodyslide_reads_addons() else 'no'}" if bs else "not found"),
+                     f"Inside MO2: {'yes' if env.inside_mo2() else 'no'}",
+                     f"Preset: {env.preset() or '-'}; Fix clipping presets: {', '.join(env.S.get('fix_presets') or []) or '-'}",
+                     "Pieces: " + (self.counts(self.items) if self.items else "not scanned"), "", "Health check:"]
+            try:
+                found = doctor.check()
+                lines += [f"  [{f.level}] {f.title}" for f in found] or ["  all good"]
+            except Exception as e:
+                lines.append(f"  could not run: {e!r}")
+            lines += ["", "Log (last lines):", log_tail]
+            text = "\n".join(lines)
+            home = os.path.expanduser("~")
+            for h in {home, home.replace("\\", "/")}:
+                text = text.replace(h, "%USERPROFILE%")
+            self.q.put(("clip", "```\n" + text + "\n```"))
+        self.run(work)
 
     # ------------------------------------------------------------ health check
     def _doctor(self, auto=False):
@@ -766,6 +828,12 @@ class App:
         """Fix clipping for the ticked converted pieces (or all converted ones) at the presets the user picks."""
         sel = self.chosen(("built", "done"))
         pieces = sel or [i for i in self.items if i["state"] in ("built", "done")]
+        self.open_fix(pieces, ticked=bool(sel))
+
+    def open_fix(self, pieces, ticked=True):
+        """The Fix clipping window for these pieces (Fix clipping button, or right-click on a piece / a mod)."""
+        if self.busy:
+            return
         if not pieces:
             messagebox.showinfo("UBE Tailor", "Convert some outfits first.")
             return
@@ -776,7 +844,7 @@ class App:
         if not presets:
             messagebox.showinfo("UBE Tailor", "No UBE body presets found (BodySlide\\SliderPresets).")
             return
-        FixWindow(self, [i["set"] for i in pieces], presets, ticked=bool(sel))
+        FixWindow(self, [i["set"] for i in pieces], presets, ticked=ticked)
 
     def run_fix(self, sets, presets, again=False):
         """Fix clipping for these pieces; pieces already fixed for these presets are skipped unless again=True."""

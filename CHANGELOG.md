@@ -1,6 +1,11 @@
 # Changelog
 
 ## Unreleased
+- **Fix clipping for one outfit or one mod.** Right-click a piece: "Fix clipping: this piece" or "...: all of <mod>".
+  Right-click a mod's row for the whole mod. So: type the mod's name in Search, right-click it, done. When Search
+  finds pieces the State filter hides, the counter says so.
+- **Copy report** (next to Guide): copies the versions, what the list holds, the health check and the end of the
+  log, ready to paste into a bug report. Your user folder is replaced by %USERPROFILE%.
 - **Fix clipping only where it is needed.** After converting new outfits the Tailor asks whether to fix clipping
   for just those pieces, with your presets from last time (Yes / No / Don't ask again; the Fix clipping window has
   the tick to turn the question back on). The Fix clipping window shows how many pieces are left to fix and how
