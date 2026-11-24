@@ -305,6 +305,8 @@ def measure(set_name, presets, refs, heel=False, pvs=None):
     mask = _erode(mask | pc.zapped, nbr, EDGE) & ~pc.zapped
     rep["hide"] = np.nonzero(mask)[0]
     vis = np.nonzero(~pc.zapped)[0]
+    if len(O0):                                   # only skin near the outfit can stand out through it (as cand)
+        vis = vis[knn(O0, body.verts[vis])[0][:, 0] < OUT + IN + 2.0]
     any_poke = np.zeros(len(vis), dtype=bool)
     for p, w, B, BN, O, OF in pokes:              # body points standing out through the outfit, before / after
         if not len(OF):
