@@ -939,7 +939,8 @@ class App:
             if len(done) == len(sets):
                 self.say("Nothing new to fix. (A piece you convert again is fixed again next time.)")
                 return
-            self.say(f"Fixing clipping of {len(sets) - len(done)} piece(s) for {len(presets)} preset(s)... (pieces "
+            self.say(f"Fixing clipping of {len(sets) - len(done)} piece(s) for {len(presets)} preset(s): "
+                     f"{', '.join(presets)}... (pieces "
                      "that already fit every preset are left as they are)")
             n = Counter()
             tot = {"before": 0, "after": 0}
