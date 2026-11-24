@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.5-beta (2026-11-24)
 - **Fix clipping for one outfit or one mod.** Right-click a piece: "Fix clipping: this piece" or "...: all of <mod>".
   Right-click a mod's row for the whole mod. So: type the mod's name in Search, right-click it, done. When Search
   finds pieces the State filter hides, the counter says so.
