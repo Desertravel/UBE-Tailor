@@ -1,6 +1,13 @@
 # Changelog
 
 ## Unreleased
+- **BodySlide 6's own Fix Clipping slider works with converted outfits.** BodySlide 6 pushes the outfit out of the
+  first skin-coloured shape in the mesh, before it takes the hidden shapes out. In a converted piece that was the
+  outfit's old 3BA body: hidden, not following your sliders, and often not in UBE shape, so the slider fitted the
+  outfit to a body that is not there. That old body now has no shader (it was never shown anyway), so BodySlide
+  fits to the UBE body. New conversions do it themselves; Fix clipping does it for pieces converted before. Use both
+  together: the Tailor's Fix clipping fits every preset you pick (and the morphs OBody / RaceMenu use), BodySlide's
+  slider then polishes the one shape you build; a small value (20-30) is enough. At 0 nothing changes.
 - **Hidden body showed under skirts.** Fix clipping hides the body where fabric lies on it, and a skirt's waist and
   hips counted: looking up the skirt from below showed the hips and crotch missing (ninistuff 2019 Christmas hid
   3,785 body points from the waist to the thighs). A body point now stays when a camera outside could see it through

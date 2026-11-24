@@ -596,6 +596,38 @@ def write_osd(path, entries):
             f.write(rec.tobytes())
 
 
+def unshade_old_bodies(set_name, ref_names=None):
+    """BodySlide 6's own Fix Clipping (the slider under Build) pushes the outfit out of the first skin-tinted shape
+    in the built mesh, before the zaps take the hidden shapes out. In a converted piece that was the outfit's old 3BA
+    body: hidden, without the body sliders, so BodySlide fitted the outfit to a body that is not there (and not in
+    UBE shape). Old bodies are fully zapped and never shown, so they lose their shader here (as SMP proxies do) and
+    BodySlide takes the UBE body. Returns how many shapes changed (conversions from now on do it themselves)."""
+    ss = ET.parse(os.path.join(BS, "SliderSets", safe(set_name) + ".osp")).getroot().find("SliderSet")
+    folder = os.path.join(BS, "ShapeData", ss.findtext("DataFolder"))
+    nif_path = os.path.join(folder, ss.findtext("SourceFile"))
+    osd = os.path.join(folder, ss.findtext("SourceFile")[:-4] + ".osd")
+    if not (os.path.isfile(nif_path) and os.path.isfile(osd)):
+        return 0
+    with open(osd, "rb") as f:
+        head = f.read()
+    if ZAP.encode() not in head:
+        return 0
+    import tailor_core as tc
+    zaps = {k[:-len(ZAP)]: len(v[0]) for k, v in tc._osd_sparse(osd).items() if k.endswith(ZAP)}
+    refs = ref_names or {r.shape for r in load_refs()}
+    nif = SseNif(nif_path)
+    n = 0
+    for sh in nif.shapes:
+        if (sh["name"] in zaps and sh["name"] not in refs and zaps[sh["name"]] >= sh["nverts"]
+                and struct.unpack_from("<2i", nif.buf, sh["props_ofs"]) != (-1, -1)):
+            nif.unshade(sh)
+            n += 1
+    if n:
+        nif.save(nif_path + ".tmp")
+        os.replace(nif_path + ".tmp", nif_path)
+    return n
+
+
 def safe(s):
     return re.sub(r"[^A-Za-z0-9 _\-\[\]\(\)\.]", "_", s)
 
@@ -836,8 +868,8 @@ def make_project(base, src, ref, refs, resolver, log=print, slots=None):
             d = d + p
         conformed[s["name"]] = gpos[s["block"]] + d
         nif.set_positions(s, pos[s["block"]] + nif.to_local_delta(s, d))
-        if s["name"] in proxies:
-            nif.unshade(s)
+        if s["name"] in bodies:          # SMP proxies stay invisible; the zapped old body must not be BodySlide's
+            nif.unshade(s)                # body either (unshade_old_bodies)
     for s in nif.shapes:
         if s["name"] == smp_body.PROXY:
             nif.unshade(s)

@@ -376,6 +376,10 @@ def _hide(set_name, presets, refs, heel, pvs, write, report):
     report["hidden"], report["through"] = len(hb["hide"]), hb["through"]
     if write:
         hide_body.apply(set_name, refs, hb["hide"])
+        try:                                     # BodySlide 6's Fix Clipping slider: against the UBE body
+            report["unshaded"] = mp.unshade_old_bodies(set_name, {r.shape for r in refs})
+        except Exception as e:
+            report["unshade_error"] = repr(e)
 
 
 def _done(report, set_name, log):
