@@ -1,6 +1,9 @@
 # Changelog
 
 ## 0.9.5-beta (2026-11-24)
+- **Health check stops coming back for other mods' missing meshes.** It counted every armor pointing at a UBE mesh
+  nobody built, also those of hand-made UBE mods (UBE Vanilla Armor's Stormcloak boots, UBE's werewolf skins),
+  which Update patch cannot change, so the window opened at every start. Now only the Tailor's own pieces count.
 - **Fix clipping for one outfit or one mod.** Right-click a piece: "Fix clipping: this piece" or "...: all of <mod>".
   Right-click a mod's row for the whole mod. So: type the mod's name in Search, right-click it, done. When Search
   finds pieces the State filter hides, the counter says so.

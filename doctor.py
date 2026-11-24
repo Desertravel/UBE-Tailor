@@ -12,6 +12,7 @@ UBE Tailor.esp so it points at the built meshes and never at a mesh that does no
 --deep also opens every converted HDT-SMP project to look for physics bones that would fall (slow).
 """
 import os
+import re
 import time
 
 import env
@@ -165,6 +166,10 @@ def check(deep=False, log=None):
 
     say("checking the patch...")
     conv_set = repoint_armas.converted_set()
+    # only the Tailor's own conversions count: a hand-made UBE mod (UBE Vanilla Armor...) pointing at a mesh nobody
+    # built is not something Update patch can change, and the window came back at every start for it
+    ours = {re.sub(r"(_[01])?\.nif$", "", str(v.get("base", "")).replace("/", "\\").lower())
+            for v in db.values() if isinstance(v, dict) and v.get("base")}
     to_new = gone = 0
     for _label, data, _file, _foreign in tc._all_armas():
         if _file:
@@ -174,7 +179,7 @@ def check(deep=False, log=None):
             continue
         key = m3.replace("/", "\\").lower()
         if key.startswith("!ube\\"):
-            gone += key[5:] not in conv_set
+            gone += key[5:] not in conv_set and re.sub(r"(_[01])?\.nif$", "", key[5:]) in ours
         else:
             to_new += key in conv_set
     add = len({i["file"] for i in items if i.get("file") and i["state"] == "built"})
