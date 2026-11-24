@@ -365,8 +365,17 @@ class App:
                 elif kind == "clip":
                     self.root.clipboard_clear()
                     self.root.clipboard_append(val)
-                    self.say("Report copied. Paste it (Ctrl+V) in your bug report on Nexus or GitHub. It has no "
-                             "personal data: your user folder is replaced by %USERPROFILE%.")
+                    # also as a file next to the Tailor, to attach to a bug report; the folder opens with it selected
+                    path = os.path.join(env.TOOL, "UBE Tailor report.txt")
+                    try:
+                        with open(path, "w", encoding="utf-8") as f:
+                            f.write(val.strip("`\n") + "\n")
+                        subprocess.Popen(["explorer", "/select,", path])
+                        where = f" and saved as '{os.path.basename(path)}' in the Tailor's folder (opened for you)"
+                    except OSError:
+                        where = ""
+                    self.say(f"Report copied{where}. Paste it (Ctrl+V) or attach the file in your bug report on "
+                             "Nexus or GitHub. It has no personal data: your user folder is replaced by %USERPROFILE%.")
                 elif kind == "hand":
                     self.db = tc.load_db()
                     self.say(f"Edited by hand in Outfit Studio: {', '.join(n[11:] for n in val[:3])}"
