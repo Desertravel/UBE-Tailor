@@ -509,12 +509,22 @@ class App:
                 return
             plugin = it["plugin"]
         mod = [i for i in self.items if i["plugin"] == plugin and i["state"] in conv]
+        # a collection plugin holds many outfits: the pieces of one outfit share their mesh folder
+        shown = [i for i in self.visible() if i["plugin"] == plugin and i["state"] in conv]
         menu = tk.Menu(self.root, tearoff=0)
         if it:
             if it["state"] in conv:
                 menu.add_command(label="Fix clipping: this piece", command=lambda: self.open_fix([it]))
+                folder = os.path.dirname(it["base"]).lower()
+                outfit = [i for i in mod if os.path.dirname(i["base"]).lower() == folder]
+                if 1 < len(outfit) < len(mod):
+                    menu.add_command(label=f"Fix clipping: this outfit ({os.path.basename(folder) or folder}, "
+                                           f"{len(outfit)} pieces)", command=lambda: self.open_fix(outfit))
             else:
                 menu.add_command(label="Fix clipping: this piece (convert it first)", state="disabled")
+        if self.text.get().strip() and 0 < len(shown) < len(mod):
+            menu.add_command(label=f"Fix clipping: the {len(shown)} shown (search '{self.text.get().strip()}')",
+                             command=lambda: self.open_fix(shown))
         menu.add_command(label=f"Fix clipping: all of {plugin} ({len(mod)} converted)",
                          command=lambda: self.open_fix(mod), state="normal" if mod else "disabled")
         if it:
