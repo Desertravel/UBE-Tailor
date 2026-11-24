@@ -813,25 +813,84 @@ def prepare_sources(bases, log=None, prog=None, stop=None):
 
 
 def _results(pool, fn, jobs, stop):
-    """Results of pool.imap_unordered, checking the stop flag twice a second (terminates the pool on stop)."""
-    it = pool.imap_unordered(fn, jobs)
-    got = 0
-    while got < len(jobs):
-        try:
-            res = it.next(timeout=0.5)
-        except multiprocessing.TimeoutError:
+    """Results of fn over the jobs as they finish (any order), from a _pool. Stops (and ends the worker processes)
+    when stop() turns true."""
+    return pool.run(fn, jobs, stop)
+
+
+def worker_count(workers):
+    """The number of workers asked for now: an int, or a function that returns it (the Workers box, read live)."""
+    try:
+        n = int(workers() if callable(workers) else workers)
+    except Exception:
+        n = 1
+    return max(1, min(n, 32))
+
+
+class _LivePool:
+    """Worker processes for one run, one multiprocessing pool of one process each, so their number can follow the
+    Workers box while the run goes on: more workers start at once when it is raised; when it is lowered, workers
+    finish the piece they are on and close (their memory comes back). A worker only starts when there is a job for
+    it, so a short run never starts more processes than it has jobs."""
+
+    def __init__(self, workers, init, maxtasks=None):
+        self.workers, self.init, self.maxtasks = workers, init, maxtasks
+        self.ctx = multiprocessing.get_context("spawn")
+        self.idle, self.busy = [], {}            # busy: pool -> AsyncResult
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close(terminate=exc[0] is not None)
+        return False
+
+    def _new(self):
+        return self.ctx.Pool(1, initializer=self.init, maxtasksperchild=self.maxtasks)
+
+    def close(self, terminate=False):
+        for p in self.idle + list(self.busy):
+            try:
+                if terminate:
+                    p.terminate()
+                else:
+                    p.close()
+                p.join()
+            except Exception:
+                pass
+        self.idle, self.busy = [], {}
+
+    def run(self, fn, jobs, stop):
+        todo = list(jobs)
+        todo.reverse()                           # pop() from the end = jobs in their order
+        while todo or self.busy:
             if stop and stop():
-                pool.terminate()
+                self.close(terminate=True)
                 return
-            continue
-        got += 1
-        yield res
+            want = min(worker_count(self.workers), len(todo) + len(self.busy))
+            while len(self.idle) + len(self.busy) > want and self.idle:    # fewer asked for: close idle workers
+                p = self.idle.pop()
+                p.close()
+                p.join()
+            while todo and len(self.busy) < want:
+                p = self.idle.pop() if self.idle else self._new()
+                self.busy[p] = p.apply_async(fn, (todo.pop(),))
+            done = [p for p, r in self.busy.items() if r.ready()]
+            if not done:
+                if self.busy:
+                    next(iter(self.busy.values())).wait(0.25)
+                continue
+            for p in done:
+                r = self.busy.pop(p)
+                self.idle.append(p)
+                yield r.get()
 
 
 def _pool(workers, init, maxtasks=None):
+    """Worker processes for a run; workers is a number or a function read while the run goes on (_LivePool)."""
     for v in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
         os.environ[v] = "2"               # workers run side by side; keep each one's math library small
-    return multiprocessing.get_context("spawn").Pool(workers, initializer=init, maxtasksperchild=maxtasks)
+    return _LivePool(workers, init, maxtasks)
 
 
 def _crashed(err):
@@ -887,7 +946,7 @@ def convert(bases, workers=6, on=None, stop=None, prep=None):
     if jobs:
         ube_field.load_cache()            # build the reference cache once here, not in every worker at the same time
         retry = []
-        with _pool(max(1, min(workers, len(jobs))), _init) as pool:
+        with _pool(workers, _init) as pool:
             for base, name, lines, err in _results(pool, _convert_one, jobs, stop):
                 i += 1
                 if _crashed(err):
@@ -903,7 +962,7 @@ def convert(bases, workers=6, on=None, stop=None, prep=None):
         if retry and not (stop and stop()):
             again = [(b, srcs[b], slot_map.get(b.lower())) for b, _e in retry]
             # one process per piece (maxtasks=1): whatever the library had left over is gone
-            with _pool(max(1, min(workers, len(again))), _init, maxtasks=1) as pool:
+            with _pool(workers, _init, maxtasks=1) as pool:
                 for base, name, lines, err in _results(pool, _convert_one, again, stop):
                     _keep(db, base, name, err, lines, made, failed)
                     if on:
@@ -1377,7 +1436,7 @@ def qa(set_names, preset, workers=6, on=None, stop=None):
     jobs = [(n, db.get(n, {}).get("heel", False), preset) for n in set_names]
     results = {}
     if jobs:
-        with _pool(max(1, min(workers, len(jobs))), _init_qa) as pool:
+        with _pool(workers, _init_qa) as pool:
             for i, (name, res, err) in enumerate(_results(pool, _qa_one, jobs, stop), 1):
                 if res:
                     results[name] = res

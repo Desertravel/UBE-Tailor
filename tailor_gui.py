@@ -123,6 +123,8 @@ class App:
         self.preset.bind("<<ComboboxSelected>>", lambda _e: env.set_preset(self.preset.get()))
         ttk.Label(opts, text="Workers", style="Sub.TLabel").pack(side="left")
         self.workers = tk.IntVar(value=min(6, max(1, (os.cpu_count() or 4) // 2)))
+        self._workers_now = self.workers.get()      # read by the running job: the box works while the Tailor works
+        self.workers.trace_add("write", self._workers_changed)
         ttk.Spinbox(opts, from_=1, to=16, width=4, textvariable=self.workers).pack(side="left", padx=(4, 14))
         self.redo = tk.BooleanVar(value=False)
         ttk.Checkbutton(opts, text="Re-convert done ones", variable=self.redo).pack(side="left")
@@ -564,6 +566,20 @@ class App:
                 self._doctor(auto=True)
         self.run(work)
 
+    def _workers_changed(self, *_a):
+        try:
+            n = int(self.workers.get())
+        except (tk.TclError, ValueError):
+            return                                  # half-typed number: keep the last one
+        if n >= 1:
+            if getattr(self, "busy", False) and n != self._workers_now:
+                self.say(f"Workers: {self._workers_now} -> {n} (the running job follows)")
+            self._workers_now = n
+
+    def live_workers(self):
+        """How many workers a running job should use now (read from its thread; set by the Workers box)."""
+        return self._workers_now
+
     # ------------------------------------------------------------ health check
     def _doctor(self, auto=False):
         import doctor
@@ -604,7 +620,7 @@ class App:
             import doctor
 
             def work():
-                doctor.fix(found, self.preset.get(), self.workers.get(), log=self.say, stop=lambda: self.stop_flag)
+                doctor.fix(found, self.preset.get(), self.live_workers, log=self.say, stop=lambda: self.stop_flag)
                 self.rescan()
             self.run(work)
         if fixable:
@@ -632,7 +648,7 @@ class App:
             else:
                 grades[res["grade"]] += 1
             self.q.put(("prog", (i, total, f"Checking fit {i}/{total}")))
-        tc.qa(sets, preset, self.workers.get(), on, lambda: self.stop_flag)
+        tc.qa(sets, preset, self.live_workers, on, lambda: self.stop_flag)
         self.say(f"Fit on {preset}: " + ", ".join(f"{tc.GRADES[g]} {n}" for g, n in sorted(grades.items()))
                  + f"  ({time.time() - t0:.0f} s)")
 
@@ -682,7 +698,7 @@ class App:
                 self.q.put(("prog", (i, total, f"Converting {i}/{total}   {(time.time() - t0) / max(i, 1):.1f} s per piece")))
             prep = lambda i, total: self.q.put(("prog", (i, total, f"Copying the outfit meshes {i}/{total}   "
                                                                    "(first step, then the conversion starts)")))
-            made, failed = tc.convert([i["base"] for i in sel], self.workers.get(), on, lambda: self.stop_flag, prep)
+            made, failed = tc.convert([i["base"] for i in sel], self.live_workers, on, lambda: self.stop_flag, prep)
             self.say(f"Converted {len(made)}, failed {len(failed)}  ({time.time() - t0:.0f} s)")
             if made and preset and not self.stop_flag:
                 self._qa(made, preset)
@@ -763,7 +779,7 @@ class App:
                                  f"(worst preset {tc.GRADES[g0]} -> {tc.GRADES[g1]})")
                 left = (time.time() - t0) / max(i, 1) * (total - i)
                 self.q.put(("prog", (i, total, f"Fixing clipping {i}/{total}   about {left / 60:.0f} min left")))
-            fix_clip.fix_many(sets, presets, self.workers.get(), on, lambda: self.stop_flag)
+            fix_clip.fix_many(sets, presets, self.live_workers, on, lambda: self.stop_flag)
             self.say(f"Fix clipping: {n['fixed']} fixed, {n['fine']} already fit every preset, {n['unchanged']} "
                      f"could not be improved without harm (left as they were), {n['failed']} failed  "
                      f"({time.time() - t0:.0f} s)" + ("  - stopped" if self.stop_flag else ""))

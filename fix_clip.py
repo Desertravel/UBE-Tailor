@@ -437,7 +437,7 @@ def fix_many(sets, presets, workers=6, on=None, stop=None, write=True, again=Fal
     if not jobs:
         return results
     picked = env.preset()
-    with tc._pool(max(1, min(workers, len(jobs))), _init_fix) as pool:
+    with tc._pool(workers, _init_fix) as pool:
         for i, (name, rep, err) in enumerate(tc._results(pool, _fix_one, jobs, stop), 1):
             if rep:
                 results[name] = rep

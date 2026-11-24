@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- **Workers can change while the Tailor works.** Raise or lower the Workers box during a long Convert, Fix clipping
+  or Check fit: more workers start at once, and when you lower it, workers finish the piece they are on and close
+  (their memory comes back). No more Stop and start again.
 - **BodySlide 6's own Fix Clipping slider works with converted outfits.** BodySlide 6 pushes the outfit out of the
   first skin-coloured shape in the mesh, before it takes the hidden shapes out. In a converted piece that was the
   outfit's old 3BA body: hidden, not following your sliders, and often not in UBE shape, so the slider fitted the
