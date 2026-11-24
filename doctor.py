@@ -232,10 +232,11 @@ def check(deep=False, log=None):
     if smp_without_body():
         out.append(Finding("smp_body", "info", "SMP cloth has no body to collide with: CBBE 3BA was installed without "
                            "its SMP option (no SKSE\\Plugins\\hdtSkinnedMeshConfigs\\3BBB-Amazing.xml), so UBE's "
-                           "body collision object (3BBB UBE patch.esp) cannot work. Skirts and capes that move with "
-                           "physics pass into the body - on 3BA characters too. To get collision: reinstall CBBE 3BA "
-                           "with an SMP physics option, build \"UBE SE 2.0 Release SMP Object for 3BA configs - "
-                           "Player\" in BodySlide, and turn SMP on in game (CBBE 3BA hotkey or spell)"))
+                           "body collision object (3BBB UBE patch.esp) cannot work. Outfits the Tailor converts carry their "
+                           "own collision body, so they are fine; other SMP outfits (and 3BA characters) let skirts "
+                           "and capes pass into the body. Optional, for those: reinstall CBBE 3BA with an SMP physics "
+                           "option, build \"UBE SE 2.0 Release SMP Object for 3BA configs - Player\" in BodySlide, "
+                           "and turn SMP on in game (CBBE 3BA hotkey or spell)"))
     say(f"health check done in {time.time() - t0:.0f} s")
     return out
 
