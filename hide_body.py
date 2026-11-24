@@ -9,7 +9,8 @@ remove ("zap") the body under such pieces by hand: what is not there cannot poke
 This does it per piece, for the presets the player uses: a body point is hidden when, at every one of them, an
 opaque outfit surface lies along the skin right over it (a sheet roughly parallel to the skin, within a few units
 outside it, or a little under it where it clips). A band of body points along the edge of every covered region
-stays (openings, cut-outs, the neckline), so no hole can show. Shapes with transparency (lace, mesh, alpha cut-outs)
+stays (openings, cut-outs, the neckline), so no hole can show; so does any point a camera outside could see through
+an opening (looking up a skirt from below, into a neckline). Shapes with transparency (lace, mesh, alpha cut-outs)
 never count as covering: the skin must show through them; neither do shapes the outfit's HDT-SMP physics moves (wind
 and motion lift them off the skin). Only the project's hidden-body zap changes (.osd, and
 .osd.orig of Fix clipping); BodySlide Batch Build makes the meshes.
@@ -33,10 +34,18 @@ IN = 1.5         # ... or this far under it (where it clips: the very spots to h
 PARALLEL = 0.5   # |outfit normal . skin normal| at least this: a sheet lying along the skin, not an edge or a strap
 ALONG = 0.6      # the outfit point must lie roughly along the skin normal (not beside the point)
 EDGE = 1         # rings of body points kept visible along every covered region's edge
-VERSION = 2      # pieces measured with an older rule are measured again (db[set]["hb"])
+VERSION = 3      # pieces measured with an older rule are measured again (db[set]["hb"])
 #   2 = 2026-11-22: the parts the outfit's HDT-SMP physics moves (skirts, frills, capes, coat tails) never cover:
 #       when wind or motion lifts them, the body hidden under them showed as holes / let the skin through
+#   3 = 2026-11-24: a body point that can be seen from outside through an opening stays (looking up a skirt from
+#       below showed the hidden hips / crotch: ninistuff 2019 Christmas hid 3,785 points from waist to thighs)
 MOVING = 0.2     # an outfit point this much weighted to physics bones the body does not have is cloth that moves
+SEEN_CONE = 75.0  # degrees around the skin normal a camera may look at a body point from
+SEEN_RINGS = 5    # ... sampled as this many rings of directions (plus the normal itself)
+SEEN_FAR = 60.0   # a ray that gets this far without meeting the outfit or the body leaves through an opening
+VOXEL = 0.5       # size of the grid the outfit / body surfaces are drawn into for those rays
+BODY_SKIP = 1.0   # a ray ignores the body until this far past the skin it leaves from
+START = 0.25      # where the fabric is closer than this over the skin (or under it), rays start this far under it
 
 
 _RESOLVER = []
@@ -67,6 +76,106 @@ def _still_tris(shape, F, bones):
                 if i < len(w):
                     w[i] += x
     return F[(w[F] < MOVING).all(1)]
+
+
+def _cone_dirs():
+    """Unit directions around +Z within SEEN_CONE degrees: the normal and SEEN_RINGS rings of 6, 12, 18 ... rays."""
+    out = [(0.0, 0.0, 1.0)]
+    for k in range(1, SEEN_RINGS + 1):
+        a = np.radians(SEEN_CONE) * k / SEEN_RINGS
+        for j in range(6 * k):
+            b = 2 * np.pi * (j + 0.5 * (k % 2)) / (6 * k)
+            out.append((np.sin(a) * np.cos(b), np.sin(a) * np.sin(b), np.cos(a)))
+    return np.array(out)
+
+
+class _Grid:
+    """Surfaces drawn into a voxel grid (every triangle sampled finer than half a voxel); rays march through it."""
+
+    def __init__(self, V, F, lo, hi, dilate=False):
+        self.lo = lo
+        self.shape = np.maximum(np.ceil((hi - lo) / VOXEL).astype(np.int64) + 1, 1)
+        self.occ = np.zeros(self.shape, dtype=bool)
+        if not len(F):
+            return
+        T = V[F]
+        edge = np.max(np.linalg.norm(T - np.roll(T, 1, axis=1), axis=2), axis=1)
+        steps = np.clip(np.ceil(edge / (VOXEL * 0.4)).astype(np.int64), 1, 64)
+        for n in np.unique(steps):
+            sel = T[steps == n]
+            i, j = np.meshgrid(np.arange(n + 1), np.arange(n + 1), indexing="ij")
+            keep = (i + j) <= n
+            u, v = i[keep] / n, j[keep] / n
+            P = (sel[:, None, 0] * (1 - u - v)[None, :, None] + sel[:, None, 1] * u[None, :, None]
+                 + sel[:, None, 2] * v[None, :, None]).reshape(-1, 3)
+            self._mark(P)
+        if dilate:                                       # close the pin holes a grazing ray slips through
+            o = self.occ.copy()
+            for ax in range(3):
+                for sh in (1, -1):
+                    o |= np.roll(self.occ, sh, axis=ax)
+            self.occ = o
+
+    def _cells(self, P):
+        c = np.floor((P - self.lo) / VOXEL).astype(np.int64)
+        ok = ((c >= 0) & (c < self.shape)).all(1)
+        return c, ok
+
+    def _mark(self, P):
+        c, ok = self._cells(P)
+        c = c[ok]
+        self.occ[c[:, 0], c[:, 1], c[:, 2]] = True
+
+    def hit(self, P):
+        c, ok = self._cells(P)
+        out = np.zeros(len(P), dtype=bool)
+        cc = c[ok]
+        out[ok] = self.occ[cc[:, 0], cc[:, 1], cc[:, 2]]
+        return out
+
+
+def seen_from_outside(P, N, O, OF, B, BF):
+    """Which body points (P, skin normals N) a camera outside can see through an opening of the outfit (O, OF):
+    some ray from the point, within SEEN_CONE of its normal, gets SEEN_FAR away without crossing the outfit or
+    the body (up a skirt, through a neckline). Where the fabric clips into the body (the very spots hiding is for)
+    the ray starts just under that fabric instead of on the skin; the skin it leaves through is not counted."""
+    if not len(P):
+        return np.zeros(0, dtype=bool)
+    allp = np.vstack([B, O]) if len(O) else B
+    lo, hi = allp.min(0) - 2 * VOXEL, allp.max(0) + 2 * VOXEL
+    cloth = _Grid(O, OF, lo, hi, dilate=True)
+    body = _Grid(B, BF, lo, hi)
+    depth = np.zeros(len(P))                              # how far under the skin a ray starts
+    if len(OF):
+        tri, bary, _dist = ube_field.project(P, O, OF)
+        s = ((ube_field.interp(O, OF, tri, bary) - P) * N).sum(1)
+        depth = np.clip(START - s, 0.0, IN + START)
+    up = np.where(np.abs(N[:, 2:3]) < 0.9, [[0.0, 0.0, 1.0]], [[1.0, 0.0, 0.0]])
+    X = np.cross(up, N)                                  # a frame around every point's normal
+    X /= np.linalg.norm(X, axis=1, keepdims=True) + 1e-12
+    Y = np.cross(N, X)
+    seen = np.zeros(len(P), dtype=bool)
+    ts = np.arange(VOXEL * 0.2, SEEN_FAR, VOXEL * 0.5)
+    for d in _cone_dirs():
+        todo = np.nonzero(~seen)[0]
+        if not len(todo):
+            break
+        R = X[todo] * d[0] + Y[todo] * d[1] + N[todo] * d[2]
+        start = P[todo] - N[todo] * depth[todo, None]
+        skip = depth[todo] / max(d[2], 0.25) + BODY_SKIP
+        blocked = np.zeros(len(todo), dtype=bool)
+        inside = np.ones(len(todo), dtype=bool)          # still inside the grid
+        for t in ts:
+            live = np.nonzero(~blocked & inside)[0]
+            if not len(live):
+                break
+            Q = start[live] + R[live] * t
+            _c, ok = cloth._cells(Q)
+            inside[live[~ok]] = False
+            hit = cloth.hit(Q) | (body.hit(Q) & (t > skip[live]))
+            blocked[live[hit & ok]] = True
+        seen[todo[~blocked]] = True
+    return seen
 
 
 def _vertex_normals(V, F):
@@ -186,8 +295,13 @@ def measure(set_name, presets, refs, heel=False, pvs=None):
             O, OF, ON = pc.outfit_at(pv, "big" if w else "small")
             covered &= _cover_at(B, BN, O, OF, ON, cand)
             pokes.append((p, w, B, BN, O, OF))
+    hid = cand[covered]
+    if len(hid):                                  # a camera outside sees it through an opening: it stays
+        BF = np.asarray(body.tris, dtype=np.int64)
+        BN0 = _vertex_normals(body.verts, BF)
+        hid = hid[~seen_from_outside(body.verts[hid], BN0[hid], O0, _F, body.verts, BF)]
     mask = np.zeros(len(body.verts), dtype=bool)
-    mask[cand[covered]] = True
+    mask[hid] = True
     mask = _erode(mask | pc.zapped, nbr, EDGE) & ~pc.zapped
     rep["hide"] = np.nonzero(mask)[0]
     vis = np.nonzero(~pc.zapped)[0]

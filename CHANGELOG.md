@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- **Hidden body showed under skirts.** Fix clipping hides the body where fabric lies on it, and a skirt's waist and
+  hips counted: looking up the skirt from below showed the hips and crotch missing (ninistuff 2019 Christmas hid
+  3,785 body points from the waist to the thighs). A body point now stays when a camera outside could see it through
+  an opening (rays from the point that get out under a hem or through a neckline without meeting the outfit or the
+  body). Tight tops and plate keep their hidden body as before. Run Fix clipping again to measure every piece anew,
+  then Batch Build.
 - **BodySlide 6.** BodySlide 6 names its programs "BodySlide.exe" / "OutfitStudio.exe" (no "x64"); installed over
   BodySlide 5, both are there and the Tailor started the old one. It now takes the newer file.
 - **Men had no genitals (TNG), women lost their pubic hair.** The Tailor took the genital addons of The New
